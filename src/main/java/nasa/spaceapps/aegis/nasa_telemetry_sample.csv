@@ -1,0 +1,7 @@
+METRIC_CODE,VALUE,UNIT,SOURCE_MISSION
+ICP_OPTIC,21.5,mmHg,Artemis-II-Simulation
+RADIATION_DOSE,112.0,mSv,SPE-Event-OSDR
+HEART_RATE,92.0,bpm,CEVIS-Ergometer
+HRV,34.0,ms,Cardio-Deconditioning
+BLOOD_GLUCOSE,104.0,mg/dL,Biochemical-Profile
+SPO2,97.5,%,ECLSS-Cabin

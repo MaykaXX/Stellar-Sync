@@ -1,0 +1,11 @@
+METRIC_CODE,VALUE,UNIT,SOURCE_MISSION
+HEART_RATE,76.0,bpm,Demo-Trend-Scenario
+HRV,64.0,ms,Demo-Trend-Scenario
+BLOOD_PRESSURE,121.0,mmHg,Demo-Trend-Scenario
+BLOOD_GLUCOSE,92.0,mg/dL,Demo-Trend-Scenario
+BODY_TEMP,36.7,C,Demo-Trend-Scenario
+SPO2,98.5,%,Demo-Trend-Scenario
+ICP_OPTIC,17.0,mmHg,Demo-Trend-Scenario
+RADIATION_DOSE,62.0,mSv,Demo-Trend-Scenario
+HYDRATION,93.0,%,Demo-Trend-Scenario
+BONE_DENSITY,97.4,%,Demo-Trend-Scenario

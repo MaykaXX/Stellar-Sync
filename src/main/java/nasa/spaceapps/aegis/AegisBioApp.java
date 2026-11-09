@@ -7,8 +7,12 @@ import javafx.application.Application;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
+import javafx.scene.chart.LineChart;
+import javafx.scene.chart.NumberAxis;
+import javafx.scene.chart.XYChart;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
@@ -21,6 +25,7 @@ import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+import javafx.util.StringConverter;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -151,6 +156,23 @@ public class AegisBioApp extends Application {
     private long lastNanos = 0;
     private int simSpeed = 1;
 
+    // Історія та прогноз
+    /** Припущення моделі: один крок симуляції = 1 хвилина часу екіпажу. */
+    private static final double MINUTES_PER_STEP = 1.0;
+    /** За скільки годин до виходу за норму показувати раннє попередження. */
+    private static final double FORECAST_WARN_HOURS = 12.0;
+    private double simMinutes = 0;
+    /** Те, що бачить користувач (з піками після тренувань): для графіка. */
+    private final TrendEngine<MetricType> chartHistory = new TrendEngine<>(MetricType.class, 1440, 60, 6);
+    /** Стійкий стан без тимчасових піків: для прогнозу. */
+    private final TrendEngine<MetricType> steadyHistory = new TrendEngine<>(MetricType.class, 1440, 60, 6);
+    private MetricType chartMetric = MetricType.ICP_OPTIC;
+    private LineChart<Number, Number> trendChart;
+    private final XYChart.Series<Number, Number> valueSeries = new XYChart.Series<>();
+    private final XYChart.Series<Number, Number> lowSeries = new XYChart.Series<>();
+    private final XYChart.Series<Number, Number> highSeries = new XYChart.Series<>();
+    private final Label forecastLabel = new Label();
+
     // Щоденні лічильники
     private int countermeasureMinutes = 75; // ціль 150 хв
     private double hydrationLiters = 1.6;   // ціль 2.8 л
@@ -227,9 +249,13 @@ public class AegisBioApp extends Application {
         hydrationLiters = 1.6;
         sleepHours = 6.0;
         initDefaultTelemetry();
+        chartHistory.clearAll();
+        steadyHistory.clearAll();
+        simMinutes = 0;
         showEffectsPlaceholder();
         updateHabitViews();
         updateAllTelemetryViews();
+        updateTrendChart();
     }
 
     // ============ ФІЗІОЛОГІЯ ============
@@ -315,13 +341,28 @@ public class AegisBioApp extends Application {
     private void tick() {
         for (int i = 0; i < simSpeed; i++) physiologyStep();
 
+  simMinutes += simSpeed * MINUTES_PER_STEP;
+
+
         // Якщо активовано режим сонячного з'єднання (блекаут), AI автоматично керує системами
         if (currentLocation == MissionLocation.SOLAR_CONJUNCTION) {
             runBlackoutAutonomy();
         }
 
         recompute();
+        recordHistory();
         updateAllTelemetryViews();
+        updateTrendChart();
+    }
+
+    /** Записує поточні показники в історію (для графіка і прогнозу). */
+    private void recordHistory() {
+        for (MetricType t : MetricType.values()) {
+            double cur = currentTelemetry.get(t);
+            chartHistory.record(t, simMinutes, cur);
+            // Для прогнозу прибираємо тимчасові піки (наприклад, пульс після тренування)
+            steadyHistory.record(t, simMinutes, cur - tempOffsets.getOrDefault(t, 0.0));
+        }
     }
 
     // ============ ДІЇ ЕКІПАЖУ ============
@@ -387,6 +428,9 @@ public class AegisBioApp extends Application {
                 baseTelemetry.put(e.metric(), clamp(e.metric(), baseTelemetry.get(e.metric()) + e.delta()));
             }
         }
+
+        // Після різкої зміни стану стара історія вже не показує тренд
+        if (a.effects().stream().anyMatch(e -> !e.temporary())) steadyHistory.clearAll();
 
         switch (a.id()) {
             case "STRENGTH", "CARDIO" -> countermeasureMinutes = Math.min(150, countermeasureMinutes + 30);
@@ -591,6 +635,8 @@ public class AegisBioApp extends Application {
             card.getChildren().addAll(cardHead, valLbl, bar);
             box.getChildren().add(card);
         }
+
+        box.getChildren().add(buildTrendSection());
 
         Label simLabel = new Label("ТЕСТОВІ СИТУАЦІЇ (щоб побачити, як працюють підказки):");
         simLabel.setWrapText(true);
@@ -932,7 +978,7 @@ public class AegisBioApp extends Application {
             case "CRITICAL" -> 0;
             case "HIGH" -> 1;
             case "MEDIUM" -> 2;
-            default -> 3;
+            default -> 3; // NOMINAL і FORECAST
         };
     }
 
@@ -1006,7 +1052,164 @@ public class AegisBioApp extends Application {
                     "NOMINAL"));
         }
 
+        addForecastWarnings();
         activeProtocols.sort(Comparator.comparingInt(p -> rank(p.urgency())));
+    }
+
+    // ============ ІСТОРІЯ І ПРОГНОЗ ============
+    /** Раннє попередження: показник ще в нормі, але за поточним трендом скоро вийде за межу. */
+    private void addForecastWarnings() {
+        for (MetricType type : MetricType.values()) {
+            TrendEngine.Forecast f = steadyHistory.forecast(type, type.minNominal, type.maxNominal);
+            double steadyNow = currentTelemetry.get(type) - tempOffsets.getOrDefault(type, 0.0);
+            if (!f.ready() || !f.leavesRange() || !inRange(type, steadyNow)) continue;
+            if (f.hoursToLimit() > FORECAST_WARN_HOURS) continue;
+
+            String verb = f.direction() == TrendEngine.Direction.UP ? "зросте вище норми" : "впаде нижче норми";
+            activeProtocols.add(new ClinicalProtocol(
+                    "Прогноз",
+                    type.title + ": " + verb + " приблизно через " + formatHours(f.hoursToLimit()),
+                    "1. " + preventiveAdvice(type) + "\n"
+                            + "2. Подивіться графік «Історія і прогноз» ліворуч.",
+                    "FORECAST"));
+        }
+    }
+
+    private String preventiveAdvice(MetricType type) {
+        return switch (type) {
+            case ICP_OPTIC -> "Заплануйте сеанс LBNP (камера для ніг), поки тиск на зоровий нерв ще в нормі.";
+            case HYDRATION -> "Випийте воду з електролітами заздалегідь.";
+            case BONE_DENSITY -> "Заплануйте силове тренування на ARED.";
+            case HRV -> "Заплануйте дихальну вправу і відпочинок.";
+            case BLOOD_PRESSURE -> "Зробіть кардіо-тренування або дихальну вправу.";
+            case BLOOD_GLUCOSE -> "Зробіть кардіо-тренування і перегляньте графік харчування.";
+            case HEART_RATE -> "Перевірте запас води і сон, зробіть дихальну вправу.";
+            default -> "Стежте за показником, перевіряйте воду, сон і тренування.";
+        };
+    }
+
+    private String formatHours(double hours) {
+        if (hours < 1.0) return "~" + Math.max(1, Math.round(hours * 60)) + " хв";
+        if (hours > 72.0) return "понад 3 доби";
+        return "~" + Math.round(hours) + " год";
+    }
+
+    private VBox buildTrendSection() {
+        VBox sec = new VBox(6);
+        sec.setPadding(new Insets(8, 0, 0, 0));
+
+        Label title = new Label("ІСТОРІЯ І ПРОГНОЗ");
+        title.setStyle(SECTION_TITLE_STYLE);
+
+        ComboBox<MetricType> pick = new ComboBox<>();
+        pick.getItems().addAll(MetricType.values());
+        pick.setValue(chartMetric);
+        pick.setMaxWidth(Double.MAX_VALUE);
+        pick.setStyle("-fx-font-size: 12px;");
+        StringConverter<MetricType> conv = new StringConverter<>() {
+            @Override public String toString(MetricType t) { return t == null ? "" : t.title; }
+            @Override public MetricType fromString(String s) { return null; }
+        };
+        pick.setConverter(conv);
+        pick.setOnAction(e -> {
+            if (pick.getValue() != null) {
+                chartMetric = pick.getValue();
+                updateTrendChart();
+            }
+        });
+
+        NumberAxis xAxis = new NumberAxis();
+        xAxis.setForceZeroInRange(false);
+        xAxis.setLabel("Час симуляції, год");
+        xAxis.setTickLabelFill(Color.web("#94A3B8"));
+        NumberAxis yAxis = new NumberAxis();
+        yAxis.setForceZeroInRange(false);
+        yAxis.setTickLabelFill(Color.web("#94A3B8"));
+
+        trendChart = new LineChart<>(xAxis, yAxis);
+        trendChart.setAnimated(false);
+        trendChart.setCreateSymbols(false);
+        trendChart.setLegendVisible(false);
+        trendChart.setMinHeight(220);
+        trendChart.setPrefHeight(220);
+        trendChart.setStyle("-fx-background-color: transparent;");
+        trendChart.getData().add(valueSeries);
+        trendChart.getData().add(lowSeries);
+        trendChart.getData().add(highSeries);
+
+        forecastLabel.setWrapText(true);
+        forecastLabel.setMaxWidth(Double.MAX_VALUE);
+        forecastLabel.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 11px; "
+                + "-fx-background-color: #151F32; -fx-padding: 8; -fx-background-radius: 4;");
+
+        Label legend = new Label("Блакитна лінія: ваш показник. Зелений пунктир: межі норми. "
+                + "Прогноз не враховує тимчасових піків після тренувань.");
+        legend.setWrapText(true);
+        legend.setStyle("-fx-text-fill: #64748B; -fx-font-size: 10px;");
+
+        sec.getChildren().addAll(title, pick, trendChart, forecastLabel, legend);
+        updateTrendChart();
+        return sec;
+    }
+
+    private void updateTrendChart() {
+        if (trendChart == null) return;
+        MetricType t = chartMetric;
+
+        List<TrendEngine.Sample> pts = chartHistory.samples(t, 120);
+        List<XYChart.Data<Number, Number>> vals = new ArrayList<>();
+        for (TrendEngine.Sample sm : pts) vals.add(new XYChart.Data<>(sm.timeMin() / 60.0, sm.value()));
+        valueSeries.getData().setAll(vals);
+
+        if (pts.size() >= 2) {
+            double x0 = pts.get(0).timeMin() / 60.0;
+            double x1 = pts.get(pts.size() - 1).timeMin() / 60.0;
+            lowSeries.getData().setAll(List.of(
+                    new XYChart.Data<Number, Number>(x0, t.minNominal),
+                    new XYChart.Data<Number, Number>(x1, t.minNominal)));
+            highSeries.getData().setAll(List.of(
+                    new XYChart.Data<Number, Number>(x0, t.maxNominal),
+                    new XYChart.Data<Number, Number>(x1, t.maxNominal)));
+        } else {
+            lowSeries.getData().clear();
+            highSeries.getData().clear();
+        }
+
+        trendChart.getYAxis().setLabel(t.unit);
+        styleTrendChart();
+        forecastLabel.setText(describeForecast(t));
+    }
+
+    private void styleTrendChart() {
+        styleSeries(valueSeries, "-fx-stroke: #38BDF8; -fx-stroke-width: 2px;");
+        styleSeries(lowSeries, "-fx-stroke: #10B981; -fx-stroke-width: 1px; -fx-stroke-dash-array: 6 6;");
+        styleSeries(highSeries, "-fx-stroke: #10B981; -fx-stroke-width: 1px; -fx-stroke-dash-array: 6 6;");
+
+        Node plot = trendChart.lookup(".chart-plot-background");
+        if (plot != null) plot.setStyle("-fx-background-color: #0B111E;");
+        for (String sel : new String[]{".chart-horizontal-grid-lines", ".chart-vertical-grid-lines"}) {
+            Node n = trendChart.lookup(sel);
+            if (n != null) n.setStyle("-fx-stroke: #1E293B;");
+        }
+        for (Node n : trendChart.lookupAll(".axis-label")) n.setStyle("-fx-text-fill: #94A3B8; -fx-fill: #94A3B8;");
+    }
+
+    private void styleSeries(XYChart.Series<Number, Number> series, String css) {
+        Node n = series.getNode();
+        if (n != null) n.setStyle(css);
+    }
+
+    private String describeForecast(MetricType t) {
+        TrendEngine.Forecast f = steadyHistory.forecast(t, t.minNominal, t.maxNominal);
+        if (!f.ready()) return "Збираю дані для прогнозу. Потрібно ще кілька вимірювань без різких змін стану.";
+
+        String rate = String.format(Locale.US, "%+.2f %s/год", f.slopePerHour(), t.unit);
+        double steadyNow = currentTelemetry.get(t) - tempOffsets.getOrDefault(t, 0.0);
+        if (!inRange(t, steadyNow)) return "Показник уже поза нормою. Швидкість зміни: " + rate + ".";
+        if (f.direction() == TrendEngine.Direction.STABLE) return "Показник стабільний (" + rate + ").";
+        return String.format(Locale.US,
+                "Тренд: %s. За цим темпом показник досягне межі норми (%.1f %s) приблизно через %s.",
+                rate, f.limit(), t.unit, formatHours(f.hoursToLimit()));
     }
 
     private String urgencyLabel(String urgency) {
@@ -1014,6 +1217,7 @@ public class AegisBioApp extends Application {
             case "CRITICAL" -> "ТЕРМІНОВО";
             case "HIGH" -> "ВАЖЛИВО";
             case "MEDIUM" -> "УВАГА";
+            case "FORECAST" -> "ПРОГНОЗ";
             default -> "ВСЕ ГАРАЗД";
         };
     }
@@ -1046,6 +1250,7 @@ public class AegisBioApp extends Application {
             case "CRITICAL" -> new String[]{"#450A0A", "#EF4444"};
             case "HIGH" -> new String[]{"#3B1607", "#F97316"};
             case "MEDIUM" -> new String[]{"#2E1065", "#A855F7"};
+            case "FORECAST" -> new String[]{"#082F49", "#0EA5E9"};
             default -> new String[]{"#064E3B", "#10B981"};
         };
         return "-fx-background-color: " + colors[0] + "; -fx-border-color: " + colors[1]
@@ -1168,6 +1373,7 @@ public class AegisBioApp extends Application {
         beforeAction = new EnumMap<>(currentTelemetry);
         baseTelemetry.put(MetricType.ICP_OPTIC, 22.8);
         baseTelemetry.put(MetricType.BLOOD_PRESSURE, 142.0);
+        steadyHistory.clearAll();
         recompute();
         updateAllTelemetryViews();
         addLog("Тест: підвищений тиск на очі");
@@ -1177,6 +1383,7 @@ public class AegisBioApp extends Application {
         beforeAction = new EnumMap<>(currentTelemetry);
         baseTelemetry.put(MetricType.RADIATION_DOSE, 125.4);
         baseTelemetry.put(MetricType.HRV, 36.0);
+        steadyHistory.clearAll();
         recompute();
         updateAllTelemetryViews();
         addLog("Тест: сонячний спалах");
@@ -1414,6 +1621,7 @@ public class AegisBioApp extends Application {
             for (Map.Entry<MetricType, Double> en : r.values().entrySet()) {
                 baseTelemetry.put(en.getKey(), clamp(en.getKey(), en.getValue()));
             }
+            steadyHistory.clearAll();
             recompute();
             updateAllTelemetryViews();
             addLog("Завантажено дані з файлу " + file.getName());

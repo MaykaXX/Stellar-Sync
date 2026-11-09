@@ -1239,7 +1239,7 @@ public class AegisBioApp extends Application {
     private void openBlackoutVaultWindow(Stage ownerStage) {
         Stage blackoutStage = new Stage();
         blackoutStage.initOwner(ownerStage);
-        blackoutStage.setTitle("🛡️ Aegis Blackout-Vault: Режим повної автономії (Solar Conjunction)");
+        blackoutStage.setTitle("Aegis Blackout-Vault: Режим повної автономії (Solar Conjunction)");
 
         VBox root = new VBox(14);
         root.setPadding(new Insets(20));
@@ -1270,8 +1270,41 @@ public class AegisBioApp extends Application {
         Label counterTitle = new Label("ЧАС ДО ВІДНОВЛЕННЯ ЗВ'ЯЗКУ З Х'ЮСТОНОМ");
         counterTitle.setStyle("-fx-text-fill: #93C5FD; -fx-font-size: 10px; -fx-font-weight: bold;");
 
-        Label countdownDisplay = new Label("14 діб  06 год  42 хв");
+        // 👉 ОСЬ ЦЕЙ РЯДОК ПОТРІБНО ПОВЕРНУТИ:
+        Label countdownDisplay = new Label();
         countdownDisplay.setStyle("-fx-text-fill: #C084FC; -fx-font-size: 28px; -fx-font-weight: 900;");
+
+        final int[] blackoutDays = {14};
+        final int[] blackoutHours = {6};
+        final int[] blackoutMinutes = {42};
+
+        Runnable updateTimerDisplay = () -> {
+            countdownDisplay.setText(String.format("%d діб  %02d год  %02d хв", blackoutDays[0], blackoutHours[0], blackoutMinutes[0]));
+        };
+        updateTimerDisplay.run();
+
+        // Запускаємо таймер, який спрацьовує раз на секунду, але хвилини зменшує плавно (по 1 хвилині, помноженій на масштаб)
+
+                javafx.animation.Timeline blackoutTimer = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(javafx.util.Duration.seconds(60.0 / Math.max(1, simSpeed)), ev -> {
+                    blackoutMinutes[0]--;
+                    if (blackoutMinutes[0] < 0) {
+                        blackoutMinutes[0] = 59;
+                        blackoutHours[0]--;
+                        if (blackoutHours[0] < 0) {
+                            blackoutHours[0] = 23;
+                            blackoutDays[0]--;
+                            if (blackoutDays[0] < 0) blackoutDays[0] = 0;
+                        }
+                    }
+                    updateTimerDisplay.run();
+                })
+        );
+        blackoutTimer.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        blackoutTimer.play();
+
+        // НЕ ЗАБУДЬ зупинити таймер, коли вікно закривається, щоб він не висів у пам'яті:
+        blackoutStage.setOnCloseRequest(e -> blackoutTimer.stop());
 
         Label bufferStatus = new Label("📦 Локальний буфер: крипто-пакети телеметрії захищені й готові до відправки");
         bufferStatus.setStyle("-fx-text-fill: #A78BFA; -fx-font-size: 11px;");

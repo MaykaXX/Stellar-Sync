@@ -44,7 +44,8 @@ public class AegisBioApp extends Application {
     public enum MissionLocation {
         LEO("Навколоземна орбіта (МКС)", 0.05),
         MOON("Місячна станція Gateway", 1.3),
-        MARS_TRANSIT("Політ до Марса", 840.0);
+        MARS_TRANSIT("Політ до Марса", 840.0),
+        SOLAR_CONJUNCTION("⚠️ Сонячне з'єднання (Blackout 0 bps)", Double.POSITIVE_INFINITY);
 
         final String label;
         final double latencySec;
@@ -58,6 +59,13 @@ public class AegisBioApp extends Application {
         public String toString() {
             return label;
         }
+    }
+
+    private Label createBlackoutItem(String text) {
+        Label l = new Label(text);
+        l.setWrapText(true);
+        l.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 11px;");
+        return l;
     }
 
     public enum MetricType {
@@ -284,8 +292,34 @@ public class AegisBioApp extends Application {
         baseTelemetry.put(MetricType.BONE_DENSITY, clamp(MetricType.BONE_DENSITY, baseTelemetry.get(MetricType.BONE_DENSITY) - 0.0008));
     }
 
+    private int blackoutTickCounter = 0;
+
+    private void runBlackoutAutonomy() {
+        blackoutTickCounter++;
+        // Кожні 10 секунд симуляції в режимі блекауту AI виконує автоматичну корекцію
+        if (blackoutTickCounter % 10 == 0) {
+            double currentRad = baseTelemetry.getOrDefault(MetricType.RADIATION_DOSE, 0.0);
+            if (currentRad > 10.0) {
+                baseTelemetry.put(MetricType.RADIATION_DOSE, Math.max(0, currentRad - 0.5));
+            }
+
+            double hyd = baseTelemetry.getOrDefault(MetricType.HYDRATION, 95.0);
+            if (hyd < 98.0) {
+                baseTelemetry.put(MetricType.HYDRATION, Math.min(100.0, hyd + 0.3));
+            }
+
+            addLog("🛡️ [AI Блекаут] Автономний контур корабля стабілізує показники екіпажу (0 bps).");
+        }
+    }
+
     private void tick() {
         for (int i = 0; i < simSpeed; i++) physiologyStep();
+
+        // Якщо активовано режим сонячного з'єднання (блекаут), AI автоматично керує системами
+        if (currentLocation == MissionLocation.SOLAR_CONJUNCTION) {
+            runBlackoutAutonomy();
+        }
+
         recompute();
         updateAllTelemetryViews();
     }
@@ -467,8 +501,13 @@ public class AegisBioApp extends Application {
         reportBtn.setStyle("-fx-background-color: #334155; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand; -fx-background-radius: 4;");
         reportBtn.setOnAction(e -> saveReport(stage));
 
+        Button blackoutBtn = new Button("🛡️ Режим Блекауту");
+        blackoutBtn.setStyle("-fx-background-color: #581C87; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand; -fx-background-radius: 4;");
+        blackoutBtn.setOnAction(e -> openBlackoutVaultWindow(stage));
+
+        // І додай blackoutBtn у список усіх елементів шапки:
         header.getChildren().addAll(logoTitle, missionDesc, spacer, locLabel, locationBox,
-                speedLabel, speedBox, importBtn, reportBtn);
+                speedLabel, speedBox, importBtn, reportBtn, blackoutBtn);
         return header;
     }
 
@@ -1021,6 +1060,8 @@ public class AegisBioApp extends Application {
                     + "Лікар на Землі відповідає майже одразу.";
             case MARS_TRANSIT -> "Ви летите до Марса. Сигнал до Землі йде 14 хвилин, "
                     + "тому лікар не відповість швидко. Дійте за підказками нижче.";
+            case SOLAR_CONJUNCTION -> "⚠️ Сонячне з'єднання (Блекаут). Сигнал заблокований Сонцем. "
+                    + "Зв'язок відсутній (0 bps). Повна автономія екіпажу!";
         };
         latencyNoticeLabel.setText(desc);
         latencyNoticeLabel.setStyle("-fx-text-fill: #F59E0B; -fx-font-size: 12px; -fx-background-color: #261E0A; -fx-padding: 8; -fx-background-radius: 4;");
@@ -1194,6 +1235,93 @@ public class AegisBioApp extends Application {
 
     // ============ ЗАВАНТАЖЕННЯ ДАНИХ З CSV ============
     private record ImportResult(Map<MetricType, Double> values, int skipped) {}
+
+    private void openBlackoutVaultWindow(Stage ownerStage) {
+        Stage blackoutStage = new Stage();
+        blackoutStage.initOwner(ownerStage);
+        blackoutStage.setTitle("🛡️ Aegis Blackout-Vault: Режим повної автономії (Solar Conjunction)");
+
+        VBox root = new VBox(14);
+        root.setPadding(new Insets(20));
+        root.setStyle("-fx-background-color: #0F0505; -fx-font-family: 'Segoe UI', system-ui, sans-serif;");
+
+        HBox header = new HBox(12);
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.setStyle("-fx-background-color: #581C87; -fx-padding: 12; -fx-background-radius: 6;");
+
+        Label icon = new Label("📡❌");
+        icon.setStyle("-fx-font-size: 24px;");
+
+        VBox headerText = new VBox(2);
+        Label title = new Label("РЕЖИМ РАДІОБЛЕКАУТУ ТА ЛОКАЛЬНОГО БУФЕРА");
+        title.setStyle("-fx-text-fill: #F3E8FF; -fx-font-size: 14px; -fx-font-weight: 900;");
+
+        Label sub = new Label("Сонце повністю блокує сигнал із Землею. Зв'язок: 0 bps. Екіпаж покладається на Aegis AI.");
+        sub.setStyle("-fx-text-fill: #D8B4FE; -fx-font-size: 11px;");
+
+        headerText.getChildren().addAll(title, sub);
+        header.getChildren().addAll(icon, headerText);
+
+        VBox counterCard = new VBox(8);
+        counterCard.setAlignment(Pos.CENTER);
+        counterCard.setPadding(new Insets(14));
+        counterCard.setStyle("-fx-background-color: #1E1B4B; -fx-border-color: #4338CA; -fx-border-radius: 6; -fx-background-radius: 6;");
+
+        Label counterTitle = new Label("ЧАС ДО ВІДНОВЛЕННЯ ЗВ'ЯЗКУ З Х'ЮСТОНОМ");
+        counterTitle.setStyle("-fx-text-fill: #93C5FD; -fx-font-size: 10px; -fx-font-weight: bold;");
+
+        Label countdownDisplay = new Label("14 діб  06 год  42 хв");
+        countdownDisplay.setStyle("-fx-text-fill: #C084FC; -fx-font-size: 28px; -fx-font-weight: 900;");
+
+        Label bufferStatus = new Label("📦 Локальний буфер: крипто-пакети телеметрії захищені й готові до відправки");
+        bufferStatus.setStyle("-fx-text-fill: #A78BFA; -fx-font-size: 11px;");
+
+        counterCard.getChildren().addAll(counterTitle, countdownDisplay, bufferStatus);
+
+        Button aiBoostBtn = new Button("⚡ Активувати форсаж систем життєзабезпечення (AI Override)");
+        aiBoostBtn.setMaxWidth(Double.MAX_VALUE);
+        aiBoostBtn.setStyle("-fx-background-color: #7C3AED; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
+        aiBoostBtn.setOnAction(e -> {
+            baseTelemetry.put(MetricType.HYDRATION, 100.0);
+            baseTelemetry.put(MetricType.RADIATION_DOSE, Math.max(0, baseTelemetry.get(MetricType.RADIATION_DOSE) - 15.0));
+            recompute();
+            updateAllTelemetryViews();
+            addLog("⚡ [AI Override] Використано аварійні резерви корабля! Показники стабілізовано.");
+
+            Alert alert = new Alert(Alert.AlertType.INFORMATION, "Системи корабля перерозподілили аварійні ресурси. Рівень води та радіації покращено!", ButtonType.OK);
+            alert.initOwner(blackoutStage);
+            alert.setHeaderText("Форсаж успішний");
+            alert.show();
+        });
+
+        VBox aiDecisionsCard = new VBox(8);
+        aiDecisionsCard.setPadding(new Insets(12));
+        aiDecisionsCard.setStyle("-fx-background-color: #1E293B; -fx-border-color: #334155; -fx-border-radius: 6; -fx-background-radius: 6;");
+
+        Label aiTitle = new Label("ЛОКАЛЬНІ ПРОТОКОЛИ БЕЗПЕКИ AEGIS (AI-ARBITRATION):");
+        aiTitle.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 12px; -fx-font-weight: bold;");
+
+        VBox decisionsList = new VBox(6);
+        decisionsList.getChildren().addAll(
+                createBlackoutItem("✓ Контроль дози радіації: автоматично активовано водяні щити."),
+                createBlackoutItem("✓ Корекція раціону: збільшено дозу вітаміну D на 20%."),
+                createBlackoutItem("✓ Психологічний моніторинг: запити заблоковано в локальний буфер."),
+                createBlackoutItem("✓ Поточний контур: AI працює у фоновому режимі та виправляє аномалії.")
+        );
+
+        aiDecisionsCard.getChildren().addAll(aiTitle, decisionsList);
+
+        Button closeBtn = new Button("Повернутися до моніторингу екіпажу");
+        closeBtn.setMaxWidth(Double.MAX_VALUE);
+        closeBtn.setStyle("-fx-background-color: #334155; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
+        closeBtn.setOnAction(e -> blackoutStage.close());
+
+        root.getChildren().addAll(header, counterCard, aiBoostBtn, aiDecisionsCard, closeBtn);
+
+        Scene scene = new Scene(root, 540, 560);
+        blackoutStage.setScene(scene);
+        blackoutStage.show();
+    }
 
     private void handleNasaCsvImport(Stage stage) {
         FileChooser fileChooser = new FileChooser();

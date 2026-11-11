@@ -277,6 +277,7 @@ public class AegisBioApp extends Application {
         steadyHistory.clearAll();
         simMinutes = 0;
         clockSec = 0;
+        if (blackoutActive) abortBlackoutSilently();
         showEffectsPlaceholder();
         updateHabitViews();
         updateAllTelemetryViews();
@@ -343,23 +344,206 @@ public class AegisBioApp extends Application {
         baseTelemetry.put(MetricType.BONE_DENSITY, clamp(MetricType.BONE_DENSITY, baseTelemetry.get(MetricType.BONE_DENSITY) - 0.0008 * DRIFT_PER_SEC));
     }
 
-    private int blackoutTickCounter = 0;
+    // ============ РЕЖИМ БЛЕКАУТУ ============
+    /** Стандартна тривалість радіоблекауту: 14 діб 6 год 42 хв. */
+    private static final long BLACKOUT_DEFAULT_SEC = (14L * 24 * 60 + 6 * 60 + 42) * 60;
+    private static final int EMERGENCY_CHARGES_MAX = 3;
+    /** Як часто (у секундах часу місії) AI-автопілот перевіряє показники. */
+    private static final long AUTOPILOT_SCAN_SEC = 15;
+    /** Приблизний розмір одного крипто-пакета телеметрії, КБ (один пакет на хвилину місії). */
+    private static final int PACKET_KB = 2;
 
+    /**
+     * Правило автопілота: якщо показник метрики наближається до межі норми
+     * (на margin), AI сам виконує дію actionId, поки діють денні ліміти.
+     */
+    private record AutoRule(String actionId, MetricType metric, boolean whenHigh,
+                            double margin, String reason, long cooldownSec) {}
+
+    private static final List<AutoRule> AUTO_RULES = List.of(
+            new AutoRule("WATER", MetricType.HYDRATION, false, 1.5,
+                    "запас води наближається до нижньої межі", 30 * 60),
+            new AutoRule("LBNP", MetricType.ICP_OPTIC, true, 1.5,
+                    "тиск на зоровий нерв наближається до межі", 120 * 60),
+            new AutoRule("BREATH", MetricType.HEART_RATE, true, 8,
+                    "пульс підвищений", 30 * 60),
+            new AutoRule("BREATH", MetricType.HRV, false, 8,
+                    "стрес-баланс серця знижений", 30 * 60),
+            new AutoRule("BREATH", MetricType.BLOOD_PRESSURE, true, 6,
+                    "тиск крові наближається до межі", 30 * 60)
+    );
+
+    private Stage blackoutStage;
+    private ComboBox<MissionLocation> locationBox;
+    private boolean syncingLocation = false;
+    private final Label blackoutStatusLabel = new Label();
+
+    private boolean blackoutActive = false;
+    /** Початок і кінець блекауту у секундах годинника місії (clockSec): таймер залежить від швидкості часу. */
+    private long blackoutStartSec = 0;
+    private long blackoutEndSec = 0;
+    private MissionLocation locationBeforeBlackout = MissionLocation.MARS_TRANSIT;
+    private int blackoutAiActions = 0;
+    private double blackoutRadReduced = 0;
+    private int emergencyCharges = EMERGENCY_CHARGES_MAX;
+    private long lastAutopilotScan = -1;
+    private long lastBlackoutReportHour = 0;
+    private final Map<String, Long> lastAutoActionClock = new HashMap<>();
+    private final Deque<String> autopilotRecent = new ArrayDeque<>();
+
+    private static String formatDuration(long sec) {
+        sec = Math.max(0, sec);
+        return String.format(Locale.US, "%d діб  %02d год  %02d хв  %02d с",
+                sec / 86400, (sec / 3600) % 24, (sec / 60) % 60, sec % 60);
+    }
+
+    private long blackoutRemainingSec() {
+        return blackoutActive ? Math.max(0, blackoutEndSec - clockSec) : 0;
+    }
+
+    private int blackoutPackets() {
+        long elapsed = Math.min(clockSec, blackoutEndSec) - blackoutStartSec;
+        return (int) Math.max(0, elapsed / 60);
+    }
+
+    /** Змінює поточну локацію і синхронізує випадаючий список (без повторного запуску його обробника). */
+    private void setLocationSilently(MissionLocation loc) {
+        currentLocation = loc;
+        if (locationBox != null && locationBox.getValue() != loc) {
+            syncingLocation = true;
+            try {
+                locationBox.setValue(loc);
+            } finally {
+                syncingLocation = false;
+            }
+        }
+        updateLatencyDisplay();
+    }
+
+    private void startBlackout(long durationSec) {
+        if (blackoutActive) return;
+        locationBeforeBlackout = currentLocation == MissionLocation.SOLAR_CONJUNCTION
+                ? MissionLocation.MARS_TRANSIT : currentLocation;
+        long duration = Math.max(60, durationSec);
+
+        blackoutActive = true;
+        blackoutStartSec = clockSec;
+        blackoutEndSec = clockSec + duration;
+        blackoutAiActions = 0;
+        blackoutRadReduced = 0;
+        emergencyCharges = EMERGENCY_CHARGES_MAX;
+        lastAutopilotScan = -1;
+        lastBlackoutReportHour = 0;
+        lastAutoActionClock.clear();
+        autopilotRecent.clear();
+
+        setLocationSilently(MissionLocation.SOLAR_CONJUNCTION);
+        addLog("📡❌ [Блекаут] Зв'язок із Землею втрачено на " + formatDuration(duration).replaceAll("\\s+", " ")
+                + ". Керування перейшло до AI-автопілота.");
+        updateBlackoutStatus();
+    }
+
+    /** completed = true: таймер дійшов до нуля; false: екіпаж перервав режим достроково. */
+    private void endBlackout(boolean completed) {
+        if (!blackoutActive) return;
+        long elapsed = Math.min(clockSec, blackoutEndSec) - blackoutStartSec;
+        int packets = blackoutPackets();
+        int actions = blackoutAiActions;
+        double rad = blackoutRadReduced;
+
+        blackoutActive = false;
+        setLocationSilently(locationBeforeBlackout);
+
+        addLog(completed
+                ? "📡✅ [Блекаут] Зв'язок відновлено. У Х'юстон передано пакетів телеметрії: " + packets + "."
+                : "⚠️ [Блекаут] Режим перервано достроково. У Х'юстон передано пакетів телеметрії: " + packets + ".");
+        updateBlackoutStatus();
+
+        String summary = String.format(Locale.US,
+                "Тривалість блекауту: %s%nПакетів телеметрії передано: %d (~%d КБ)%nДій AI-автопілота: %d%n"
+                        + "Дозу радіації знижено щитами: %.2f мЗв",
+                formatDuration(elapsed).replaceAll("\\s+", " "), packets, packets * PACKET_KB, actions, rad);
+        Alert alert = new Alert(Alert.AlertType.INFORMATION, summary, ButtonType.OK);
+        Stage owner = (blackoutStage != null && blackoutStage.isShowing()) ? blackoutStage : mainStage;
+        if (owner != null) alert.initOwner(owner);
+        alert.setHeaderText(completed ? "Зв'язок із Х'юстоном відновлено" : "Блекаут перервано");
+        alert.show();
+    }
+
+    /** Тихе скасування (наприклад, при повному скиданні симуляції). */
+    private void abortBlackoutSilently() {
+        blackoutActive = false;
+        setLocationSilently(locationBeforeBlackout);
+        updateBlackoutStatus();
+    }
+
+    private void updateBlackoutStatus() {
+        boolean on = blackoutActive;
+        blackoutStatusLabel.setVisible(on);
+        blackoutStatusLabel.setManaged(on);
+        if (on) {
+            blackoutStatusLabel.setText("📡❌ БЛЕКАУТ: до відновлення зв'язку "
+                    + formatDuration(blackoutRemainingSec()).replaceAll("\\s+", " ")
+                    + "  |  Дій AI: " + blackoutAiActions);
+        }
+    }
+
+    /** Один крок блекауту (викликається з tick()): таймер, автопілот, періодичний звіт. */
+    private void blackoutStep() {
+        if (clockSec >= blackoutEndSec) {
+            endBlackout(true);
+            return;
+        }
+        long scan = clockSec / AUTOPILOT_SCAN_SEC;
+        if (scan != lastAutopilotScan) {
+            lastAutopilotScan = scan;
+            runBlackoutAutonomy();
+        }
+        long hour = (clockSec - blackoutStartSec) / 3600;
+        if (hour > lastBlackoutReportHour) {
+            lastBlackoutReportHour = hour;
+            if (hour % 6 == 0) {
+                addLog("🛰️ [Блекаут] Минуло " + hour + " год. У локальному буфері пакетів: " + blackoutPackets()
+                        + ", дій AI: " + blackoutAiActions + ".");
+            }
+        }
+        updateBlackoutStatus();
+    }
+
+    /**
+     * Автономний контур: водяні щити поступово знижують дозу радіації,
+     * а автопілот сам виконує дії (вода, дихання, LBNP), коли показники наближаються до межі норми.
+     * Він користується тими самими денними лімітами й перервами, що й екіпаж.
+     */
     private void runBlackoutAutonomy() {
-        blackoutTickCounter++;
-        // Кожні 10 секунд симуляції в режимі блекауту AI виконує автоматичну корекцію
-        if (blackoutTickCounter % 10 == 0) {
-            double currentRad = baseTelemetry.getOrDefault(MetricType.RADIATION_DOSE, 0.0);
-            if (currentRad > 10.0) {
-                baseTelemetry.put(MetricType.RADIATION_DOSE, Math.max(0, currentRad - 0.5));
-            }
+        double rad = baseTelemetry.getOrDefault(MetricType.RADIATION_DOSE, 0.0);
+        if (rad > 10.0) {
+            double d = Math.min(0.02, rad - 10.0);
+            baseTelemetry.put(MetricType.RADIATION_DOSE, rad - d);
+            blackoutRadReduced += d;
+        }
 
-            double hyd = baseTelemetry.getOrDefault(MetricType.HYDRATION, 95.0);
-            if (hyd < 98.0) {
-                baseTelemetry.put(MetricType.HYDRATION, Math.min(100.0, hyd + 0.3));
-            }
+        for (AutoRule r : AUTO_RULES) {
+            MetricType m = r.metric();
+            double steady = currentTelemetry.getOrDefault(m, 0.0) - tempOffsets.getOrDefault(m, 0.0);
+            boolean needed = r.whenHigh() ? steady > m.maxNominal - r.margin() : steady < m.minNominal + r.margin();
+            if (!needed) continue;
 
-            addLog("🛡️ [AI Блекаут] Автономний контур корабля стабілізує показники екіпажу (0 bps).");
+            Long last = lastAutoActionClock.get(r.actionId());
+            if (last != null && clockSec - last < r.cooldownSec()) continue;
+
+            Activity a = findActivity(r.actionId());
+            if (a == null || blockedReason(a) != null) continue;
+
+            lastAutoActionClock.put(r.actionId(), clockSec);
+            applyActivity(a, true);
+            blackoutAiActions++;
+
+            String msg = a.logText() + " (" + r.reason() + ")";
+            addLog("🤖 [AI-автопілот] " + msg + ".");
+            autopilotRecent.addFirst("[" + LOG_TIME.format(missionNow()) + "] " + msg);
+            while (autopilotRecent.size() > 5) autopilotRecent.removeLast();
+            break; // за одне сканування — одна дія
         }
     }
 
@@ -374,9 +558,9 @@ public class AegisBioApp extends Application {
             startNewDay();
         }
 
-        // Якщо активовано режим сонячного з'єднання (блекаут), AI автоматично керує системами
-        if (currentLocation == MissionLocation.SOLAR_CONJUNCTION) {
-            runBlackoutAutonomy();
+        // Режим блекауту: таймер іде від годинника місії, AI-автопілот сам виконує дії
+        if (blackoutActive) {
+            blackoutStep();
         }
 
         recompute();
@@ -473,9 +657,14 @@ public class AegisBioApp extends Application {
     }
 
     private void applyActivity(Activity a) {
+        applyActivity(a, false);
+    }
+
+    /** automatic = true: дію виконує AI-автопілот блекауту (без вікна пояснень, з позначкою в журналі). */
+    private void applyActivity(Activity a, boolean automatic) {
         String blocked = blockedReason(a);
         if (blocked != null) {
-            showNotice("Зараз не можна: " + a.logText(), blocked);
+            if (!automatic) showNotice("Зараз не можна: " + a.logText(), blocked);
             return;
         }
         beforeAction = new EnumMap<>(currentTelemetry);
@@ -503,8 +692,10 @@ public class AegisBioApp extends Application {
         recompute();
         updateHabitViews();
         updateAllTelemetryViews();
-        showEffects(a);
-        addLog(a.logText());
+        if (!automatic) {
+            showEffects(a);
+            addLog(a.logText());
+        }
     }
 
     // ============ ЛІМІТИ, ДОБА І ТАБЛЕТКИ ============
@@ -1260,14 +1451,24 @@ public class AegisBioApp extends Application {
         Label locLabel = new Label("ДЕ МИ ЗАРАЗ:");
         locLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px; -fx-font-weight: bold;");
 
-        ComboBox<MissionLocation> locationBox = new ComboBox<>();
+        locationBox = new ComboBox<>();
         locationBox.getItems().addAll(MissionLocation.values());
         locationBox.setValue(currentLocation);
         locationBox.setMaxWidth(Double.MAX_VALUE);
         locationBox.setStyle("-fx-font-size: 12px;");
         locationBox.setOnAction(e -> {
-            this.currentLocation = locationBox.getValue();
-            updateLatencyDisplay();
+            if (syncingLocation) return;
+            MissionLocation selected = locationBox.getValue();
+            if (selected == MissionLocation.SOLAR_CONJUNCTION) {
+                // Вибір «Сонячне з'єднання» запускає справжній блекаут зі стандартним таймером
+                startBlackout(BLACKOUT_DEFAULT_SEC);
+            } else if (blackoutActive) {
+                locationBeforeBlackout = selected;
+                endBlackout(false);
+            } else {
+                this.currentLocation = selected;
+                updateLatencyDisplay();
+            }
         });
 
         latencyNoticeLabel.setWrapText(true);
@@ -1329,7 +1530,11 @@ public class AegisBioApp extends Application {
         Label linkStatus = new Label("Зв'язок із Землею (Х'юстон): повідомлення йдуть із затримкою");
         linkStatus.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
 
-        status.getChildren().addAll(crewStatus, linkStatus);
+        blackoutStatusLabel.setStyle("-fx-text-fill: #C084FC; -fx-font-size: 11px; -fx-font-weight: bold;");
+        blackoutStatusLabel.setVisible(false);
+        blackoutStatusLabel.setManaged(false);
+
+        status.getChildren().addAll(crewStatus, linkStatus, blackoutStatusLabel);
         return status;
     }
 
@@ -1690,6 +1895,8 @@ public class AegisBioApp extends Application {
             double steadyNow = currentTelemetry.get(type) - tempOffsets.getOrDefault(type, 0.0);
             if (!f.ready() || !f.leavesRange() || !inRange(type, steadyNow)) continue;
             if (f.hoursToLimit() > FORECAST_WARN_HOURS) continue;
+            // Зниження дози радіації (наприклад, водяними щитами в блекауті) не є загрозою
+            if (type == MetricType.RADIATION_DOSE && f.direction() == TrendEngine.Direction.DOWN) continue;
 
             String verb = f.direction() == TrendEngine.Direction.UP ? "зросте вище норми" : "впаде нижче норми";
             activeProtocols.add(new ClinicalProtocol(
@@ -2122,9 +2329,14 @@ public class AegisBioApp extends Application {
     private record ImportResult(Map<MetricType, Double> values, int skipped) {}
 
     private void openBlackoutVaultWindow(Stage ownerStage) {
-        Stage blackoutStage = new Stage();
-        blackoutStage.initOwner(ownerStage);
-        blackoutStage.setTitle("Aegis Blackout-Vault: Режим повної автономії (Solar Conjunction)");
+        if (blackoutStage != null && blackoutStage.isShowing()) {
+            blackoutStage.toFront();
+            return;
+        }
+        Stage stage = new Stage();
+        blackoutStage = stage;
+        stage.initOwner(ownerStage);
+        stage.setTitle("Aegis Blackout-Vault: Режим повної автономії (Solar Conjunction)");
 
         VBox root = new VBox(14);
         root.setPadding(new Insets(20));
@@ -2141,73 +2353,86 @@ public class AegisBioApp extends Application {
         Label title = new Label("РЕЖИМ РАДІОБЛЕКАУТУ ТА ЛОКАЛЬНОГО БУФЕРА");
         title.setStyle("-fx-text-fill: #F3E8FF; -fx-font-size: 14px; -fx-font-weight: 900;");
 
-        Label sub = new Label("Сонце повністю блокує сигнал із Землею. Зв'язок: 0 bps. Екіпаж покладається на Aegis AI.");
+        Label sub = new Label("Сонце блокує сигнал із Землею. Зв'язок: 0 bps. Корабель керується AI-автопілотом Aegis.");
         sub.setStyle("-fx-text-fill: #D8B4FE; -fx-font-size: 11px;");
+        sub.setWrapText(true);
 
         headerText.getChildren().addAll(title, sub);
         header.getChildren().addAll(icon, headerText);
 
+        // --- Таймер ---
         VBox counterCard = new VBox(8);
         counterCard.setAlignment(Pos.CENTER);
         counterCard.setPadding(new Insets(14));
         counterCard.setStyle("-fx-background-color: #1E1B4B; -fx-border-color: #4338CA; -fx-border-radius: 6; -fx-background-radius: 6;");
 
-        Label counterTitle = new Label("ЧАС ДО ВІДНОВЛЕННЯ ЗВ'ЯЗКУ З Х'ЮСТОНОМ");
+        Label counterTitle = new Label();
         counterTitle.setStyle("-fx-text-fill: #93C5FD; -fx-font-size: 10px; -fx-font-weight: bold;");
 
         Label countdownDisplay = new Label();
         countdownDisplay.setStyle("-fx-text-fill: #C084FC; -fx-font-size: 28px; -fx-font-weight: 900;");
 
-        // Скільки хвилин залишилось (14 діб 6 год 42 хв)
-        final int[] remainingMinutes = {14 * 24 * 60 + 6 * 60 + 42};
-        // Накопичувач дробових хвилин: щосекунди додаємо simSpeed/60 хв, тож зміна швидкості діє одразу
-        final double[] accumulator = {0.0};
+        ProgressBar blackoutProgress = new ProgressBar(0);
+        blackoutProgress.setMaxWidth(Double.MAX_VALUE);
 
-        Runnable updateTimerDisplay = () -> {
-            int total = remainingMinutes[0];
-            int d = total / (24 * 60);
-            int hh = (total / 60) % 24;
-            int mm = total % 60;
-            countdownDisplay.setText(String.format("%d діб  %02d год  %02d хв", d, hh, mm));
-        };
-        updateTimerDisplay.run();
-
-        Timeline blackoutTimer = new Timeline(new KeyFrame(Duration.seconds(1), ev -> {
-            accumulator[0] += simSpeed / 60.0;
-            int whole = (int) accumulator[0];
-            if (whole > 0) {
-                accumulator[0] -= whole;
-                remainingMinutes[0] = Math.max(0, remainingMinutes[0] - whole);
-                updateTimerDisplay.run();
-            }
-        }));
-        blackoutTimer.setCycleCount(Animation.INDEFINITE);
-        blackoutTimer.play();
-
-        // Зупиняємо таймер при закритті вікна (будь-яким способом)
-        blackoutStage.setOnHidden(e -> blackoutTimer.stop());
-
-        Label bufferStatus = new Label("📦 Локальний буфер: крипто-пакети телеметрії захищені й готові до відправки");
+        Label bufferStatus = new Label();
         bufferStatus.setStyle("-fx-text-fill: #A78BFA; -fx-font-size: 11px;");
 
-        counterCard.getChildren().addAll(counterTitle, countdownDisplay, bufferStatus);
+        counterCard.getChildren().addAll(counterTitle, countdownDisplay, blackoutProgress, bufferStatus);
 
-        Button aiBoostBtn = new Button("⚡ Активувати форсаж систем життєзабезпечення (AI Override)");
+        // --- Запуск / зупинка ---
+        String[] presetLabels = {"10 хвилин (демо)", "1 година (демо)", "1 доба", "14 діб 6 год 42 хв (повний)"};
+        long[] presetSecs = {10 * 60L, 3600L, 86400L, BLACKOUT_DEFAULT_SEC};
+
+        ComboBox<String> durationBox = new ComboBox<>();
+        durationBox.getItems().addAll(presetLabels);
+        durationBox.getSelectionModel().select(0);
+        durationBox.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(durationBox, Priority.ALWAYS);
+
+        Button startStopBtn = new Button();
+        startStopBtn.setStyle("-fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
+        startStopBtn.setOnAction(e -> {
+            if (blackoutActive) {
+                endBlackout(false);
+            } else {
+                startBlackout(presetSecs[Math.max(0, durationBox.getSelectionModel().getSelectedIndex())]);
+            }
+        });
+
+        Label durationLabel = new Label("Тривалість:");
+        durationLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px; -fx-font-weight: bold;");
+
+        HBox controlsRow = new HBox(10, durationLabel, durationBox, startStopBtn);
+        controlsRow.setAlignment(Pos.CENTER_LEFT);
+
+        Label speedHint = new Label("Таймер іде за часом місії: змініть «Швидкість часу» у верхній панелі, щоб прискорити його.");
+        speedHint.setStyle("-fx-text-fill: #64748B; -fx-font-size: 10px;");
+        speedHint.setWrapText(true);
+
+        // --- Аварійний форсаж (обмежені резерви) ---
+        Button aiBoostBtn = new Button();
         aiBoostBtn.setMaxWidth(Double.MAX_VALUE);
         aiBoostBtn.setStyle("-fx-background-color: #7C3AED; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
         aiBoostBtn.setOnAction(e -> {
+            if (!blackoutActive || emergencyCharges <= 0) return;
+            emergencyCharges--;
             baseTelemetry.put(MetricType.HYDRATION, 100.0);
             baseTelemetry.put(MetricType.RADIATION_DOSE, Math.max(0, baseTelemetry.get(MetricType.RADIATION_DOSE) - 15.0));
             recompute();
             updateAllTelemetryViews();
-            addLog("⚡ [AI Override] Використано аварійні резерви корабля! Показники стабілізовано.");
+            addLog("⚡ [AI Override] Використано аварійні резерви корабля! Залишилось зарядів: " + emergencyCharges + ".");
 
-            Alert alert = new Alert(Alert.AlertType.INFORMATION, "Системи корабля перерозподілили аварійні ресурси. Рівень води та радіації покращено!", ButtonType.OK);
-            alert.initOwner(blackoutStage);
+            Alert alert = new Alert(Alert.AlertType.INFORMATION,
+                    "Системи корабля перерозподілили аварійні ресурси. Рівень води та радіації покращено!\n"
+                            + "Залишилось аварійних зарядів: " + emergencyCharges + " з " + EMERGENCY_CHARGES_MAX + ".",
+                    ButtonType.OK);
+            alert.initOwner(stage);
             alert.setHeaderText("Форсаж успішний");
             alert.show();
         });
 
+        // --- Протоколи й живий журнал автопілота ---
         VBox aiDecisionsCard = new VBox(8);
         aiDecisionsCard.setPadding(new Insets(12));
         aiDecisionsCard.setStyle("-fx-background-color: #1E293B; -fx-border-color: #334155; -fx-border-radius: 6; -fx-background-radius: 6;");
@@ -2217,24 +2442,71 @@ public class AegisBioApp extends Application {
 
         VBox decisionsList = new VBox(6);
         decisionsList.getChildren().addAll(
-                createBlackoutItem("✓ Контроль дози радіації: автоматично активовано водяні щити."),
-                createBlackoutItem("✓ Корекція раціону: збільшено дозу вітаміну D на 20%."),
-                createBlackoutItem("✓ Психологічний моніторинг: запити заблоковано в локальний буфер."),
-                createBlackoutItem("✓ Поточний контур: AI працює у фоновому режимі та виправляє аномалії.")
+                createBlackoutItem("✓ Радіація: водяні щити поступово знижують отриману дозу."),
+                createBlackoutItem("✓ Вода: якщо запас біля нижньої межі, AI сам п'є 400 мл (у межах денної норми)."),
+                createBlackoutItem("✓ Серце й тиск: при підвищеному пульсі, тиску чи низькому HRV AI робить дихальну вправу."),
+                createBlackoutItem("✓ Тиск на зоровий нерв: біля межі норми AI запускає сеанс LBNP."),
+                createBlackoutItem("✓ Телеметрія: щохвилини місії пакет шифрується й іде в локальний буфер.")
         );
 
-        aiDecisionsCard.getChildren().addAll(aiTitle, decisionsList);
+        Label recentTitle = new Label("ОСТАННІ ДІЇ АВТОПІЛОТА:");
+        recentTitle.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 11px; -fx-font-weight: bold;");
+        Label recentActions = new Label();
+        recentActions.setWrapText(true);
+        recentActions.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 11px;");
+
+        aiDecisionsCard.getChildren().addAll(aiTitle, decisionsList, recentTitle, recentActions);
 
         Button closeBtn = new Button("Повернутися до моніторингу екіпажу");
         closeBtn.setMaxWidth(Double.MAX_VALUE);
         closeBtn.setStyle("-fx-background-color: #334155; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
-        closeBtn.setOnAction(e -> blackoutStage.close());
+        closeBtn.setOnAction(e -> stage.close());
 
-        root.getChildren().addAll(header, counterCard, aiBoostBtn, aiDecisionsCard, closeBtn);
+        // --- Оновлення вікна зі стану застосунку (вікно лише показує стан, таймер від нього не залежить) ---
+        Runnable refresh = () -> {
+            boolean on = blackoutActive;
+            if (on) {
+                counterTitle.setText("ЧАС ДО ВІДНОВЛЕННЯ ЗВ'ЯЗКУ З Х'ЮСТОНОМ");
+                countdownDisplay.setText(formatDuration(blackoutRemainingSec()));
+                double total = Math.max(1, blackoutEndSec - blackoutStartSec);
+                blackoutProgress.setProgress(Math.min(1.0, Math.max(0.0, (clockSec - blackoutStartSec) / total)));
+                bufferStatus.setText("📦 Локальний буфер: " + blackoutPackets() + " пакетів (~" + blackoutPackets() * PACKET_KB
+                        + " КБ) чекають відправки. Дій AI: " + blackoutAiActions);
+                startStopBtn.setText("⏹ Перервати блекаут");
+                startStopBtn.setStyle("-fx-background-color: #B91C1C; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
+            } else {
+                counterTitle.setText("БЛЕКАУТ НЕ АКТИВНИЙ. ОБЕРІТЬ ТРИВАЛІСТЬ І ЗАПУСТІТЬ");
+                countdownDisplay.setText("Зв'язок із Землею є");
+                blackoutProgress.setProgress(0);
+                bufferStatus.setText("📦 Локальний буфер порожній");
+                startStopBtn.setText("▶ Активувати блекаут");
+                startStopBtn.setStyle("-fx-background-color: #7C3AED; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
+            }
+            durationBox.setDisable(on);
+            aiBoostBtn.setDisable(!on || emergencyCharges <= 0);
+            aiBoostBtn.setText("⚡ Аварійний форсаж життєзабезпечення (AI Override), зарядів: "
+                    + (on ? emergencyCharges : EMERGENCY_CHARGES_MAX) + "/" + EMERGENCY_CHARGES_MAX);
+            recentActions.setText(autopilotRecent.isEmpty()
+                    ? (on ? "Поки що втручання не потрібні: показники в нормі." : "—")
+                    : String.join("\n", autopilotRecent));
+        };
+        refresh.run();
 
-        Scene scene = new Scene(root, 540, 560);
-        blackoutStage.setScene(scene);
-        blackoutStage.show();
+        Timeline windowRefresh = new Timeline(new KeyFrame(Duration.millis(250), ev -> refresh.run()));
+        windowRefresh.setCycleCount(Animation.INDEFINITE);
+        windowRefresh.play();
+
+        // Закриття вікна не зупиняє блекаут: зупиняємо лише оновлення самого вікна
+        stage.setOnHidden(e -> {
+            windowRefresh.stop();
+            if (blackoutStage == stage) blackoutStage = null;
+        });
+
+        root.getChildren().addAll(header, counterCard, controlsRow, speedHint, aiBoostBtn, aiDecisionsCard, closeBtn);
+
+        Scene scene = new Scene(scroll(root), 580, 700);
+        stage.setScene(scene);
+        stage.show();
     }
 
     // ============ ЗАВАНТАЖЕННЯ ДАНИХ З CSV ============

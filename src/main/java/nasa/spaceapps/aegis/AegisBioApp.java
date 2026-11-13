@@ -47,7 +47,8 @@ import java.util.*;
  * Модель спрощена і призначена для демонстрації, це не медичний прилад.
  */
 public class AegisBioApp extends Application {
-
+    // --- Mesh-мережі екіпажу ---
+    private CrewMeshPanel crewPanel;
     // ============ МОДЕЛЬ ДАНИХ ============
     public enum MissionLocation {
         LEO("Навколоземна орбіта (МКС)", 0.05),
@@ -252,6 +253,8 @@ public class AegisBioApp extends Application {
                     boolean hw = hr > 100 || hr < 55 || currentTelemetry.get(MetricType.HRV) < 40;
                     heartMonitor.update(dt, hr, hw, onHome);
                 }
+                // Mesh екіпажу живе завжди (таймери, пакети), малюється лише на своєму екрані
+                if (crewPanel != null) crewPanel.frame(dt, currentScreen == Screen.MESH_CREW);
                 double tSec = animationPulse / 3.0;
                 if (currentScreen == Screen.METRICS && dnaHelix != null) {
                     double risk = Math.min(1.0, currentTelemetry.get(MetricType.RADIATION_DOSE) / 300.0);
@@ -1046,7 +1049,8 @@ public class AegisBioApp extends Application {
         ACTIONS("🧭", "Що робити", "Підказки та ваші дії"),
         MEDKIT("💊", "Аптечка", "Таблетки з безпечною дозою"),
         TRENDS("📈", "Історія і прогноз", "Що було і що буде"),
-        MISSION("🛰️", "Місія", "Зв'язок, дані, тести");
+        MISSION("🛰️", "Місія", "Зв'язок, дані, тести"),
+        MESH_CREW("👥", "Команда (Mesh)", "P2P зв'язок та статус екіпажу");
 
         final String icon;
         final String title;
@@ -1303,7 +1307,10 @@ public class AegisBioApp extends Application {
         screens.put(Screen.MEDKIT, buildMedkitScreen());
         screens.put(Screen.TRENDS, buildTrendsScreen());
         screens.put(Screen.MISSION, buildMissionScreen());
+        screens.put(Screen.MESH_CREW, buildCrewMeshScreen());
+
         for (Node n : screens.values()) stack.getChildren().add(n);
+
 
         showScreen(Screen.HOME);
         updateAllTelemetryViews();
@@ -1885,6 +1892,17 @@ public class AegisBioApp extends Application {
         VBox box = new VBox(14, locBlock, dataBlock, testBlock);
         box.setPadding(new Insets(2, 4, 2, 2));
         return scroll(box);
+    }
+
+    private Node buildCrewMeshScreen() {
+        crewPanel = new CrewMeshPanel(CrewMeshNetwork.createDefaultCrew(), this::addLog, count -> {
+            Label badge = navBadges.get(Screen.MESH_CREW);
+            if (badge != null) {
+                badge.setText("🚨 " + count);
+                badge.setVisible(count > 0);
+            }
+        });
+        return scroll(crewPanel);
     }
 
     // ============ НИЖНІЙ РЯДОК ============
@@ -2704,6 +2722,12 @@ public class AegisBioApp extends Application {
             }
         }
 
+        // Пристрій командира в mesh-мережі показує ті самі живі дані
+        if (crewPanel != null) {
+            crewPanel.setLocalVitals(currentTelemetry.get(MetricType.HEART_RATE),
+                    currentTelemetry.get(MetricType.HRV), currentTelemetry.get(MetricType.HYDRATION));
+        }
+
         // Загальна оцінка стану
         int total = MetricType.values().length;
         int score = okCount * 100 / total;
@@ -3101,6 +3125,22 @@ public class AegisBioApp extends Application {
         thread.setDaemon(true);
         thread.start();
     }
+
+    public enum CrewStatus {
+        NOMINAL("Усе гаразд", HoloUi.GREEN),
+        WARNING("Потрібна увага", HoloUi.AMBER),
+        CRITICAL("Критично / SOS", HoloUi.RED),
+        OFFLINE("⚠️ Немає сигналу (Mesh Lost)", HoloUi.TEXT_DIM);
+
+        public final String label;
+        public final Color color;
+
+        CrewStatus(String label, Color color) {
+            this.label = label;
+            this.color = color;
+        }
+    }
+
 
     public static void main(String[] args) {
         launch(args);

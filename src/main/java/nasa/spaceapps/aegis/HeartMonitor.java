@@ -23,6 +23,12 @@ public final class HeartMonitor extends Canvas {
     private double columnAccum = 0;
     private double beatPhase = 0;  // 0..1 всередині одного удару
     private double bpm = 75;
+    private Color accent = null;   // якщо задано, замінює зелений/помаранчевий
+
+    /** Власний колір лінії (наприклад, червоний для SOS). null: колір за станом. */
+    public void setAccent(Color accent) {
+        this.accent = accent;
+    }
 
     /**
      * @param dtSec  скільки секунд минуло з минулого кадру
@@ -76,7 +82,7 @@ public final class HeartMonitor extends Canvas {
         for (double x = 0; x < w; x += 20) gc.strokeLine(x, 0, x, h);
         for (double y = 0; y < h; y += 20) gc.strokeLine(0, y, w, y);
 
-        Color c = warn ? Color.rgb(249, 115, 22) : Color.rgb(52, 211, 153);
+        Color c = accent != null ? accent : (warn ? Color.rgb(249, 115, 22) : Color.rgb(52, 211, 153));
         int n = (int) Math.min(w, CAPACITY - 1);
         double base = h * 0.66;
         double amp = h * 0.50;

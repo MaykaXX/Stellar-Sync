@@ -49,6 +49,8 @@ import java.util.*;
 public class AegisBioApp extends Application {
     // --- Mesh-мережі екіпажу ---
     private CrewMeshPanel crewPanel;
+    private final StressEngine stressEngine = new StressEngine();
+
     // ============ МОДЕЛЬ ДАНИХ ============
     public enum MissionLocation {
         LEO("Навколоземна орбіта (МКС)", 0.05),
@@ -314,6 +316,7 @@ public class AegisBioApp extends Application {
         steadyHistory.clearAll();
         simMinutes = 0;
         clockSec = 0;
+        stressEngine.reset();
         if (blackoutActive) abortBlackoutSilently();
         showEffectsPlaceholder();
         updateHabitViews();
@@ -605,6 +608,40 @@ public class AegisBioApp extends Application {
         updateAllTelemetryViews();
         updateTrendChart();
         updateClock();
+        updateStress();
+    }
+
+    // ============ AEGIS MINDCARE ============
+    private void updateStress() {
+        stressEngine.update(new StressEngine.Reading(
+                currentTelemetry.get(MetricType.HEART_RATE),
+                currentTelemetry.get(MetricType.HRV),
+                currentTelemetry.get(MetricType.HYDRATION),
+                sleepHours), clockSec);
+        if (stressEngine.shouldAlertCritical(clockSec)) {
+            addLog("🧠 [MindCare] Стрес критичний і не минає. Відкриваю вікно психологічної підтримки.");
+            openMindCare();
+        }
+    }
+
+    private void openMindCare() {
+        Stage owner = (blackoutStage != null && blackoutStage.isShowing()) ? blackoutStage : mainStage;
+        MindCareWindow.open(owner, new MindCareWindow.Hooks(
+                stressEngine,
+                () -> clockSec,
+                this::addLog,
+                this::onMindCareBreathingDone,
+                this::onMindCareSos));
+    }
+
+    private void onMindCareBreathingDone() {
+        Activity breath = findActivity("BREATH");
+        if (breath != null && blockedReason(breath) == null) applyActivity(breath, true);
+    }
+
+    private void onMindCareSos() {
+        if (crewPanel != null) crewPanel.raiseCommanderSos();
+        addLog("🆘 [MindCare] SOS Mental Alert надіслано в ЦУП та екіпажу.");
     }
 
     /** Записує поточні показники в історію (для графіка і прогнозу). */
@@ -1887,6 +1924,17 @@ public class AegisBioApp extends Application {
                 "Імпорт читає готові дані з файлу. Звіт можна зберегти й показати лікарю. "
                         + "Блекаут: режим, коли Земля недоступна.", dataRow);
 
+        Button mindCareBtn = new Button("🧠 Психологічна підтримка (MindCare)");
+        mindCareBtn.setStyle("-fx-background-color: #0D9488; -fx-text-fill: white; -fx-font-weight: bold; "
+                + "-fx-cursor: hand; -fx-background-radius: 8;");
+        mindCareBtn.setTooltip(new Tooltip("Дихання, чек-ін настрою, вправи й аварійний сигнал SOS."));
+        mindCareBtn.setOnAction(e -> openMindCare());
+
+        VBox mindBlock = HoloUi.block("🧠", "Психологічна підтримка", "Дихання, настрій і допомога колезі",
+                "Окреме вікно: дихальна вправа 4-4-4-4, чек-ін настрою, вправа «5-4-3-2-1», щоденні квести "
+                        + "й кнопка SOS. Усе працює без зв'язку із Землею. Це не заміна психолога.",
+                mindCareBtn);
+
         Button sansTrigger = new Button("👁 Тест: тиск на очі");
         sansTrigger.setStyle("-fx-background-color: #7C3AED; -fx-text-fill: white; -fx-font-size: 12px; "
                 + "-fx-cursor: hand; -fx-background-radius: 8;");
@@ -1909,7 +1957,7 @@ public class AegisBioApp extends Application {
                         + "Після цього перейдіть на «Головний» або «Що робити» і подивіться, як реагує програма.",
                 testRow);
 
-        VBox box = new VBox(14, locBlock, dataBlock, testBlock);
+        VBox box = new VBox(14, locBlock, dataBlock, mindBlock, testBlock);
         box.setPadding(new Insets(2, 4, 2, 2));
         return scroll(box);
     }
@@ -2847,6 +2895,12 @@ public class AegisBioApp extends Application {
         sb.append(String.format(Locale.US,
                 "%nВПРАВИ ТА ВОДА:%n- Тренування: %d з 150 хв%n- Вода: %.1f з 2.8 л%n- Сон: %.1f з 8 год%n",
                 countermeasureMinutes, hydrationLiters, sleepHours));
+
+        StressEngine.Assessment stress = stressEngine.latest();
+        sb.append(String.format(Locale.US, "%nПСИХОЛОГІЧНИЙ СТАН (MindCare):%n- Індекс стресу: %d з 100 (%s)%n",
+                stress.index(), stress.level().label));
+        if (!stress.reasons().isEmpty()) sb.append("- Що тисне: ").append(String.join("; ", stress.reasons())).append('\n');
+        sb.append(MindCareWindow.summaryText());
 
         sb.append("\nЖУРНАЛ ДІЙ:\n");
         if (logLines.isEmpty()) sb.append("(порожньо)\n");

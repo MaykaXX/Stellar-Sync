@@ -129,7 +129,9 @@ public final class CrewMeshPanel extends VBox {
                 + "3) У інших спрацюють вібрація, звук і маячок на схемі. Натисніть «Іду на допомогу».\n"
                 + "4) «📡 Зв'язок» вимикає радіо вузла, а сусіди помітять тишу.";
         VBox block = HoloUi.block("🕸️", "Mesh-мережа корабля", "Жива схема: пакети летять між пристроями",
-                how, hint, chips, mapHolder, legend, sosRow);
+                how, hint, chips, mapHolder, legend,
+                SourceLinks.row("Основа:", SpaceSources.hazard("I").source(), SpaceSources.risk("TEAM").source()),
+                sosRow);
         block.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(block, Priority.ALWAYS);
         return block;

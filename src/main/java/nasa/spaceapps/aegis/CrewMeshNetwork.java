@@ -157,10 +157,15 @@ public final class CrewMeshNetwork {
         local().setExternalVitals(hr, hrv, hyd);
     }
 
-    public void acknowledge(CrewMemberState m) {
-        if (m.acknowledge(clock)) {
+    /** «Усе гаразд». Повертає true, якщо була тривога (таймер або SOS), яку скасовано. */
+    public boolean acknowledge(CrewMemberState m) {
+        boolean something = m.acknowledge(clock);
+        if (something) {
             event(Kind.OK, "✅ " + m.shortName() + " підтвердив «Усе гаразд»: тривогу скасовано.", m);
+        } else {
+            event(Kind.INFO, "✅ " + m.shortName() + ": стан підтверджено, усе гаразд.", m);
         }
+        return something;
     }
 
     public void setManualSos(CrewMemberState m, boolean on) {
@@ -182,6 +187,7 @@ public final class CrewMeshNetwork {
 
     public void toggleAnomaly(CrewMemberState m) {
         boolean on = !m.isAnomalyActive();
+        if (on) m.resetGrace();   // новий збій після «Усе гаразд» має знову запускати таймер
         m.setAnomalyActive(on);
         event(on ? Kind.WARN : Kind.INFO,
                 on ? "⚡ [ДЕМО] " + m.shortName() + ": імітація раптового збою показників."
@@ -304,9 +310,18 @@ public final class CrewMeshNetwork {
                 broadcastEmergency(m);
             } else if (!sos && m.sosBroadcasted) {
                 m.sosBroadcasted = false;
+                packets.removeIf(p -> p.from == m && p.type == PacketType.EMERGENCY);
                 for (CrewMemberState o : members) o.alerts.remove(m.getId());
                 event(Kind.OK, "🔕 Відбій: маячок " + m.shortName() + " вимкнено на всіх пристроях.", m);
             }
+        }
+
+        // страховка: сигнал, чиє джерело вже не в SOS, не має лишатися на пристроях
+        for (CrewMemberState m : members) {
+            m.alerts.entrySet().removeIf(en -> {
+                CrewMemberState src = byId(en.getKey());
+                return src == null || !src.isSosActive();
+            });
         }
 
         // допомога прибула
@@ -314,6 +329,14 @@ public final class CrewMeshNetwork {
             for (CrewMemberState.IncomingAlert al : m.alerts.values()) {
                 if (al.responding && !al.arrived && clock - al.respondStart >= al.respondDuration) {
                     al.arrived = true;
+                    // Допомога на місці: на ВСІХ пристроях вимикаємо звук і вібрацію цього SOS
+                    for (CrewMemberState o : members) {
+                        CrewMemberState.IncomingAlert x = o.alerts.get(al.senderId);
+                        if (x != null) {
+                            x.handled = true;
+                            x.muted = true;
+                        }
+                    }
                     CrewMemberState victim = byId(al.senderId);
                     if (victim != null) {
                         victim.setAnomalyActive(false); // у демо після допомоги показники повертаються до норми
@@ -321,6 +344,25 @@ public final class CrewMeshNetwork {
                                 + ". Допомога надається, показники стабілізуються.", victim);
                     }
                 }
+            }
+        }
+
+        // Авто-SOS знімається сам: допомога на місці, а показники вже стабільні 8 секунд
+        for (CrewMemberState v : members) {
+            if (v.isSosActive() && v.isAutoSos() && isHandled(v)) {
+                if (!v.isVitalsCritical()) {
+                    if (v.stableSince < 0) {
+                        v.stableSince = clock;
+                    } else if (clock - v.stableSince >= 8) {
+                        v.stableSince = -1;
+                        v.clearSos(clock);
+                        event(Kind.OK, "🏁 " + v.shortName() + ": показники стабільні, SOS знято автоматично.", v);
+                    }
+                } else {
+                    v.stableSince = -1;
+                }
+            } else {
+                v.stableSince = -1;
             }
         }
 
@@ -369,6 +411,7 @@ public final class CrewMeshNetwork {
     }
 
     private void receiveEmergency(CrewMemberState src, CrewMemberState dst, byte[] sealed) {
+        if (!src.isSosActive()) return;   // пакет запізнився: SOS уже знято
         String plain = open(sealed);
         if (plain == null) {
             event(Kind.WARN, "🔐 " + dst.shortName() + ": пакет відхилено (не пройшов перевірку AES-GCM).", dst);
@@ -445,6 +488,14 @@ public final class CrewMeshNetwork {
     private void event(Kind kind, String text, CrewMemberState subject) {
         MeshEvent e = new MeshEvent(kind, text, subject);
         for (Consumer<MeshEvent> l : listeners) l.accept(e);
+    }
+
+    private boolean isHandled(CrewMemberState victim) {
+        for (CrewMemberState o : members) {
+            CrewMemberState.IncomingAlert al = o.alerts.get(victim.getId());
+            if (al != null && al.handled) return true;
+        }
+        return false;
     }
 
     private CrewMemberState byId(String id) {

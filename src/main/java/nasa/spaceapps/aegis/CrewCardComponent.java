@@ -9,7 +9,6 @@ import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
-import javafx.scene.effect.DropShadow;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
@@ -37,6 +36,7 @@ public final class CrewCardComponent extends VBox {
     private final Button linkBtn = new Button();
     private final Button sosBtn = new Button();
     private final Button pingBtn = new Button("💬 Усе гаразд?");
+    private final Button okBtn = new Button("✅ Усе гаразд");
 
     // показники
     private final Label hrVal = new Label(), hrvVal = new Label(), hydVal = new Label();
@@ -51,7 +51,12 @@ public final class CrewCardComponent extends VBox {
     // смуга 2: власний SOS
     private final HBox sosStrip = new HBox(12);
     private final Label sosText = new Label();
-    private final Button cancelBtn = new Button("Відбій SOS");
+    private final Button cancelBtn = new Button("✅ Усе гаразд (відбій)");
+
+    // смуга-підтвердження: коротко показує, що кнопка спрацювала
+    private final HBox okStrip = new HBox(10);
+    private final Label okText = new Label("✅ Підтверджено: тривогу скасовано. Показники повертаються до норми.");
+    private double okUntil = -1;
 
     // смуга 3: вхідний SOS від сусіда
     private final HBox rxStrip = new HBox(12);
@@ -60,7 +65,8 @@ public final class CrewCardComponent extends VBox {
     private final Button muteBtn = new Button("🔇 Заглушити");
     private final Button doneBtn = new Button("✅ Допомогу надано");
 
-    private final DropShadow glow = new DropShadow();
+    private boolean renderToggle = false;
+    private String lastRxStyle = "";
     private String lastCardStyle = "";
     private String lastChipStyle = "";
     private String lastTimerStyle = "";
@@ -74,10 +80,8 @@ public final class CrewCardComponent extends VBox {
         this.net = network;
         setPadding(new Insets(14));
 
-        getChildren().addAll(buildHeader(), buildMetrics(), buildTimerStrip(), buildSosStrip(), buildRxStrip());
+        getChildren().addAll(buildHeader(), buildMetrics(), buildOkStrip(), buildTimerStrip(), buildSosStrip(), buildRxStrip());
 
-        glow.setColor(Color.web("#EF4444"));
-        glow.setSpread(0.15);
         wireActions();
         update(0, net.now(), true);
     }
@@ -118,9 +122,10 @@ public final class CrewCardComponent extends VBox {
 
         HBox buttons = new HBox(6);
         buttons.setAlignment(Pos.CENTER_RIGHT);
+        buttons.getChildren().add(okBtn);
         if (!m.isLocal()) buttons.getChildren().add(pingBtn);
         buttons.getChildren().addAll(anomalyBtn, linkBtn, sosBtn);
-        for (Button b : new Button[]{pingBtn, anomalyBtn, linkBtn, sosBtn}) {
+        for (Button b : new Button[]{okBtn, pingBtn, anomalyBtn, linkBtn, sosBtn}) {
             b.setMinWidth(Region.USE_PREF_SIZE);
         }
 
@@ -164,6 +169,34 @@ public final class CrewCardComponent extends VBox {
         return r;
     }
 
+    private Node buildOkStrip() {
+        okText.setWrapText(true);
+        okText.setMaxWidth(Double.MAX_VALUE);
+        okText.setStyle("-fx-text-fill: #6EE7B7; -fx-font-weight: bold; -fx-font-size: 12px;");
+        okStrip.setAlignment(Pos.CENTER_LEFT);
+        okStrip.setPadding(new Insets(9, 12, 9, 12));
+        okStrip.setStyle("-fx-background-color: rgba(6,95,70,0.40); -fx-border-color: #10B981; "
+                + "-fx-border-radius: 8; -fx-background-radius: 8;");
+        okStrip.getChildren().add(okText);
+        HBox.setHgrow(okText, Priority.ALWAYS);
+        hide(okStrip);
+        return okStrip;
+    }
+
+    /** Показує зелене підтвердження на кілька секунд. */
+    private void flashOk(String text) {
+        okText.setText(text);
+        okUntil = net.now() + 4.0;
+        show(okStrip, true);
+    }
+
+    /** Усі кнопки «Усе гаразд» роблять те саме. */
+    private void confirmOk() {
+        boolean hadAlarm = net.acknowledge(m);
+        flashOk(hadAlarm ? "✅ Підтверджено: тривогу скасовано. Показники повертаються до норми."
+                : "✅ Стан підтверджено: усе гаразд.");
+    }
+
     private Node buildTimerStrip() {
         timerText.setWrapText(true);
         timerText.setStyle("-fx-text-fill: #FDBA74; -fx-font-weight: bold; -fx-font-size: 12px;");
@@ -202,6 +235,7 @@ public final class CrewCardComponent extends VBox {
         styleButton(goBtn, "#B45309", "#FBBF24");
         styleButton(muteBtn, "#1E293B", "#64748B");
         styleButton(doneBtn, "#059669", "#34D399");
+        doneBtn.setText("✅ Відбій");
         rxStrip.setAlignment(Pos.CENTER_LEFT);
         rxStrip.setPadding(new Insets(9, 12, 9, 12));
         rxStrip.setStyle("-fx-background-color: rgba(120,53,15,0.40); -fx-border-color: #F59E0B; "
@@ -214,6 +248,7 @@ public final class CrewCardComponent extends VBox {
     }
 
     private void wireActions() {
+        styleButton(okBtn, "#047857", "#34D399");
         styleButton(pingBtn, "#4C1D95", "#A855F7");
         styleButton(anomalyBtn, "#1E293B", "#F59E0B");
         styleButton(linkBtn, "#1E293B", "#38BDF8");
@@ -226,8 +261,11 @@ public final class CrewCardComponent extends VBox {
             if (m.isSosActive()) net.cancelSos(m, m);
             else net.setManualSos(m, true);
         });
-        ackBtn.setOnAction(e -> net.acknowledge(m));
-        cancelBtn.setOnAction(e -> net.cancelSos(m, m));
+        ackBtn.setMinWidth(Region.USE_PREF_SIZE);
+        cancelBtn.setMinWidth(Region.USE_PREF_SIZE);
+        okBtn.setOnAction(e -> confirmOk());
+        ackBtn.setOnAction(e -> confirmOk());
+        cancelBtn.setOnAction(e -> confirmOk());
         goBtn.setOnAction(e -> {
             if (rxSenderId != null) net.respond(m, rxSenderId);
         });
@@ -274,7 +312,8 @@ public final class CrewCardComponent extends VBox {
                 : st == CrewMemberState.CrewStatus.WARNING ? Color.web("#F59E0B")
                 : st == CrewMemberState.CrewStatus.OFFLINE ? Color.web("#64748B")
                 : Color.web("#EF4444"));
-        ecg.update(dt, m.getHr(), st != CrewMemberState.CrewStatus.NOMINAL, visible);
+        renderToggle = !renderToggle;
+        ecg.update(dt, m.getHr(), st != CrewMemberState.CrewStatus.NOMINAL, visible && renderToggle);
 
         // вібрація та звук працюють і тоді, коли відкрито інший екран
         CrewMemberState.IncomingAlert rx = firstAlert();
@@ -287,28 +326,31 @@ public final class CrewCardComponent extends VBox {
 
         if (!visible) return;
 
-        // колір і світіння картки
+        // колір картки: червона тривога, жовта (є сигнал від сусіда), зелена (допомога на місці)
         boolean danger = st == CrewMemberState.CrewStatus.CRITICAL;
-        boolean attention = rx != null;
-        String cardStyle = danger
-                ? "-fx-background-color: linear-gradient(to bottom, #2A1015, #1A0B10); -fx-border-color: #EF4444;"
-                : attention
-                ? "-fx-background-color: linear-gradient(to bottom, #2A1E0C, #181208); -fx-border-color: #F59E0B;"
-                : "-fx-background-color: #121C30; -fx-border-color: #22334F;";
+        boolean attention = rx != null && !rx.handled;
+        boolean help = rx != null && rx.handled;
+        boolean pulse = ((int) (now * 2)) % 2 == 0;
+        String cardStyle;
+        if (danger) {
+            cardStyle = "-fx-background-color: linear-gradient(to bottom, #2A1015, #1A0B10); -fx-border-color: "
+                    + (pulse ? "#EF4444" : "#7F1D1D") + ";";
+        } else if (attention) {
+            cardStyle = "-fx-background-color: linear-gradient(to bottom, #2A1E0C, #181208); -fx-border-color: "
+                    + (pulse ? "#F59E0B" : "#78350F") + ";";
+        } else if (help) {
+            cardStyle = "-fx-background-color: linear-gradient(to bottom, #0C2A22, #08181A); -fx-border-color: #10B981;";
+        } else {
+            cardStyle = "-fx-background-color: #121C30; -fx-border-color: #22334F;";
+        }
         cardStyle += " -fx-border-width: 1.5; -fx-border-radius: 12; -fx-background-radius: 12;";
         if (!cardStyle.equals(lastCardStyle)) {
             lastCardStyle = cardStyle;
             setStyle(cardStyle);
         }
-        if (danger || attention) {
-            glow.setColor(danger ? Color.web("#EF4444") : Color.web("#F59E0B"));
-            glow.setRadius(12 + 9 * (0.5 + 0.5 * Math.sin(now * 5)));
-            setEffect(glow);
-        } else {
-            setEffect(null);
-        }
 
         statusDot.setFill(sc);
+        show(okStrip, now < okUntil);
 
         // таймер і прогрес-бар оновлюємо щокадру, текст: 5 разів на секунду
         boolean timer = m.isTimerRunning();
@@ -387,18 +429,30 @@ public final class CrewCardComponent extends VBox {
         // смуга: вхідний SOS
         show(rxStrip, rx != null);
         if (rx != null) {
-            int more = m.getAlerts().size() - 1;
-            rxText.setText("📳🔊 SOS від " + rx.senderName + (more > 0 ? "  (+" + more + ")" : "")
-                    + "\n" + rx.summary
-                    + "\n🔐 AES-GCM ✔ · пакет #" + rx.packetId
-                    + String.format(Locale.US, " · ≈%.0f м · %d dBm", rx.distanceM, rx.rssi));
-            show(goBtn, !rx.responding);
-            show(muteBtn, !rx.responding && !rx.muted);
-            show(doneBtn, rx.arrived);
-            if (rx.responding && !rx.arrived) {
-                rxText.setText(rxText.getText() + "\n🏃 Ви в дорозі: ще "
-                        + Math.max(0, Math.round(rx.respondDuration * (1 - rx.progress(now)))) + " с");
+            String rs = rx.handled
+                    ? "-fx-background-color: rgba(6,95,70,0.40); -fx-border-color: #10B981; -fx-border-radius: 8; -fx-background-radius: 8;"
+                    : "-fx-background-color: rgba(120,53,15,0.40); -fx-border-color: #F59E0B; -fx-border-radius: 8; -fx-background-radius: 8;";
+            if (!rs.equals(lastRxStyle)) {
+                lastRxStyle = rs;
+                rxStrip.setStyle(rs);
+                rxText.setStyle("-fx-text-fill: " + (rx.handled ? "#6EE7B7" : "#FDE68A")
+                        + "; -fx-font-weight: bold; -fx-font-size: 12px;");
             }
+            int more = m.getAlerts().size() - 1;
+            String head = rx.handled
+                    ? "🤝 Допомога на місці: " + rx.senderName + ". Звук вимкнено, стан стабілізується."
+                    : "📳🔊 SOS від " + rx.senderName + (more > 0 ? "  (+" + more + ")" : "");
+            StringBuilder sb = new StringBuilder(head).append("\n").append(rx.summary)
+                    .append("\n🔐 AES-GCM ✔ · пакет #").append(rx.packetId)
+                    .append(String.format(Locale.US, " · ≈%.0f м · %d dBm", rx.distanceM, rx.rssi));
+            if (rx.responding && !rx.arrived && !rx.handled) {
+                sb.append("\n🏃 Ви в дорозі: ще ")
+                        .append(Math.max(0, Math.round(rx.respondDuration * (1 - rx.progress(now))))).append(" с");
+            }
+            rxText.setText(sb.toString());
+            show(goBtn, !rx.responding && !rx.handled);
+            show(muteBtn, !rx.responding && !rx.muted);
+            show(doneBtn, rx.handled);
         }
     }
 

@@ -167,6 +167,8 @@ public class AegisBioApp extends Application {
     private final List<String> logLines = new ArrayList<>();
     private final Button autoPlanBtn = new Button();
     private Canvas bodyHudCanvas;
+    /** MindCare: локальна оцінка стресу (без нейромереж). */
+    private final StressEngine mindEngine = new StressEngine();
 
     // Нові візуальні елементи
     private final Map<MetricType, HoloUi.RingGauge> gauges = new EnumMap<>(MetricType.class);
@@ -310,6 +312,7 @@ public class AegisBioApp extends Application {
         lastPillTime.clear();
         currentDay = 0;
         initDefaultTelemetry();
+        mindEngine.reset();
         chartHistory.clearAll();
         steadyHistory.clearAll();
         simMinutes = 0;
@@ -732,6 +735,21 @@ public class AegisBioApp extends Application {
         }
 
         recompute();
+        // MindCare: тимчасові піки (наприклад, після тренування) віднімаємо, щоб не вважати їх стресом
+        StressEngine.Assessment mind = mindEngine.update(new StressEngine.Reading(
+                currentTelemetry.get(MetricType.HEART_RATE) - tempOffsets.getOrDefault(MetricType.HEART_RATE, 0.0),
+                currentTelemetry.get(MetricType.HRV) - tempOffsets.getOrDefault(MetricType.HRV, 0.0),
+                currentTelemetry.get(MetricType.HYDRATION),
+                sleepHours), clockSec);
+        if (mindEngine.shouldSuggest(clockSec)) {
+            addLog("🧠 [MindCare] Стрес тримається (" + mind.index() + "/100, " + mind.level().label
+                    + "). " + StressEngine.protocolFor(mind.level()));
+        }
+        // Критичний стрес, що тримається: вікно MindCare відкривається саме (також під час блекауту)
+        if (mindEngine.shouldAlertCritical(clockSec)) {
+            addLog("🚨 [MindCare] Критичний стрес (" + mind.index() + "/100). Відкрито вікно підтримки.");
+            openMindCare();
+        }
         recordHistory();
         updateAllTelemetryViews();
         updateTrendChart();
@@ -1993,8 +2011,14 @@ public class AegisBioApp extends Application {
         blackoutBtn.setTooltip(new Tooltip("Коли зв'язку немає, штучний інтелект сам піклується про екіпаж."));
         blackoutBtn.setOnAction(e -> openBlackoutVaultWindow(mainStage));
 
+        Button mindBtn = new Button("🧠 MindCare");
+        mindBtn.setStyle("-fx-background-color: #0891B2; -fx-text-fill: white; -fx-font-weight: bold; "
+                + "-fx-cursor: hand; -fx-background-radius: 8;");
+        mindBtn.setTooltip(new Tooltip("Психологічна підтримка: дихання, чек-ін настрою, квести, SOS."));
+        mindBtn.setOnAction(e -> openMindCare());
+
         FlowPane dataRow = new FlowPane(10, 10);
-        dataRow.getChildren().addAll(importBtn, reportBtn, blackoutBtn);
+        dataRow.getChildren().addAll(importBtn, reportBtn, blackoutBtn, mindBtn);
         VBox dataBlock = HoloUi.block("📂", "Дані, звіти та автономний режим", "Імпорт, збереження та режим без зв'язку",
                 "Імпорт читає готові дані з файлу. Звіт можна зберегти й показати лікарю. "
                         + "Блекаут: режим, коли Земля недоступна.", dataRow);
@@ -2035,6 +2059,21 @@ public class AegisBioApp extends Application {
             }
         });
         return scroll(crewPanel);
+    }
+
+    // ============ MINDCARE ============
+    private void openMindCare() {
+        MindCareWindow.open(mainStage, new MindCareWindow.Hooks(
+                mindEngine,
+                () -> clockSec,
+                this::addLog,
+                () -> {
+                    Activity a = findActivity("BREATH");
+                    if (a != null && blockedReason(a) == null) applyActivity(a);
+                },
+                () -> addLog(blackoutActive
+                        ? "🆘 [MindCare SOS] Зв'язку немає: сигнал збережено в локальному буфері й піде в ЦУП після відновлення."
+                        : "🆘 [MindCare SOS] Сигнал психологічної підтримки надіслано в ЦУП.")));
     }
 
     // ============ НИЖНІЙ РЯДОК ============
@@ -2959,6 +2998,8 @@ public class AegisBioApp extends Application {
         sb.append(String.format(Locale.US,
                 "%nВПРАВИ ТА ВОДА:%n- Тренування: %d з 150 хв%n- Вода: %.1f з 2.8 л%n- Сон: %.1f з 8 год%n",
                 countermeasureMinutes, hydrationLiters, sleepHours));
+
+        sb.append("\nПСИХОЛОГІЧНИЙ СТАН (MindCare):\n").append(MindCareWindow.summaryText());
 
         sb.append("\nЖУРНАЛ ДІЙ:\n");
         if (logLines.isEmpty()) sb.append("(порожньо)\n");

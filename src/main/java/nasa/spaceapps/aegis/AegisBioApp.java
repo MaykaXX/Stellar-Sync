@@ -25,7 +25,6 @@ import javafx.scene.paint.RadialGradient;
 import javafx.scene.paint.Stop;
 import javafx.scene.shape.ArcType;
 import javafx.scene.text.Font;
-import javafx.scene.text.TextAlignment;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
@@ -167,8 +166,6 @@ public class AegisBioApp extends Application {
     private final List<String> logLines = new ArrayList<>();
     private final Button autoPlanBtn = new Button();
     private Canvas bodyHudCanvas;
-    /** MindCare: локальна оцінка стресу (без нейромереж). */
-    private final StressEngine mindEngine = new StressEngine();
 
     // Нові візуальні елементи
     private final Map<MetricType, HoloUi.RingGauge> gauges = new EnumMap<>(MetricType.class);
@@ -229,6 +226,7 @@ public class AegisBioApp extends Application {
     @Override
     public void start(Stage primaryStage) {
         mainStage = primaryStage;
+        SourceLinks.init(getHostServices());
         initDefaultTelemetry();
 
         BorderPane root = new BorderPane();
@@ -312,7 +310,6 @@ public class AegisBioApp extends Application {
         lastPillTime.clear();
         currentDay = 0;
         initDefaultTelemetry();
-        mindEngine.reset();
         chartHistory.clearAll();
         steadyHistory.clearAll();
         simMinutes = 0;
@@ -390,14 +387,8 @@ public class AegisBioApp extends Application {
     private static final int EMERGENCY_CHARGES_MAX = 3;
     /** Як часто (у секундах часу місії) AI-автопілот перевіряє показники. */
     private static final long AUTOPILOT_SCAN_SEC = 15;
-    /**
-     * Merkle-Delta Sync Vault: щохвилини місії в буфер іде один мікро-пакет (лише дельта показників),
-     * а хеші пакетів зводяться в дерево Меркла. На Землю після блекауту йде один корінь (32 Б).
-     */
-    private final MerkleDeltaVault vault = new MerkleDeltaVault(MetricType.values().length);
-    /** Результат останньої перевірки цілісності після відновлення зв'язку (null, якщо ще не перевіряли). */
-    private MerkleDeltaVault.VerifyReport lastVerify = null;
-    private final Random vaultRng = new Random();
+    /** Приблизний розмір одного крипто-пакета телеметрії, КБ (один пакет на хвилину місії). */
+    private static final int PACKET_KB = 2;
 
     /**
      * Правило автопілота: якщо показник метрики наближається до межі норми
@@ -448,120 +439,8 @@ public class AegisBioApp extends Application {
     }
 
     private int blackoutPackets() {
-        return vault.size();
-    }
-
-    /** Додає в сховище пакети за всі повні хвилини блекауту, що минули (1 пакет = 1 хвилина місії). */
-    private void syncVault() {
-        long target = Math.max(0, (Math.min(clockSec, blackoutEndSec) - blackoutStartSec) / 60);
-        if (vault.size() >= target) return;
-        MetricType[] types = MetricType.values();
-        double[] snapshot = new double[types.length];
-        for (int i = 0; i < types.length; i++) snapshot[i] = currentTelemetry.getOrDefault(types[i], 0.0);
-        while (vault.size() < target) vault.append(snapshot);
-    }
-
-    private static String formatBytes(long b) {
-        if (b < 1024) return b + " Б";
-        if (b < 1024L * 1024) return String.format(Locale.US, "%.1f КБ", b / 1024.0);
-        return String.format(Locale.US, "%.2f МБ", b / (1024.0 * 1024));
-    }
-
-    /** Текстовий звіт про перевірку цілісності (що зробила Земля і скільки це коштувало). */
-    private static String describeVerify(MerkleDeltaVault.VerifyReport r) {
-        if (r.intactOnFirstCheck()) {
-            return "✅ Корені збіглися: Земля перевірила всі " + r.packets()
-                    + " пакетів, отримавши лише корінь (32 Б). Повторна передача не потрібна.";
-        }
-        StringJoiner ids = new StringJoiner(", ");
-        for (int idx : r.corrupted()) ids.add("№" + idx);
-        StringBuilder sb = new StringBuilder("⚠️ Корені різні: десь у пакетах є пошкодження.\n");
-        sb.append("🔎 Земля спустилася по дереву: запитала ").append(r.hashesFetched()).append(" хешів (")
-                .append(formatBytes(r.proofBytes())).append(" разом із коренем) і знайшла пакет: ")
-                .append(ids).append(" (номер = хвилина блекауту).\n");
-        sb.append("📤 Повторно передано лише його: ").append(formatBytes(r.repairBytes())).append(".\n");
-        sb.append(r.intactAfterRepair()
-                ? "✅ Після повтору корінь збігається: усі пакети цілі.\n"
-                : "❌ Після повтору корінь усе ще не збігається.\n");
-        sb.append("Для порівняння: повна повторна передача коштувала б ").append(formatBytes(r.fullResendBytes()))
-                .append(" (без стиснення ").append(formatBytes(r.rawResendBytes())).append(").");
-        return sb.toString();
-    }
-
-    /** Схема дерева Меркла: верхні 4 рівні (корінь + 3 рівні нижче), у вузлах скорочені хеші й діапазони пакетів. */
-    private void drawMerkleTree(Canvas canvas) {
-        GraphicsContext g = canvas.getGraphicsContext2D();
-        double w = canvas.getWidth(), h = canvas.getHeight();
-        g.setFill(Color.web("#0B1020"));
-        g.fillRect(0, 0, w, h);
-        g.setTextAlign(TextAlignment.CENTER);
-
-        List<byte[][]> lv = vault.levels();
-        if (lv.isEmpty()) {
-            g.setFill(Color.web("#64748B"));
-            g.setFont(Font.font(11));
-            g.fillText("Дерево з'явиться, коли в буфері буде перший пакет", w / 2, h / 2);
-            return;
-        }
-        int top = lv.size() - 1;
-        int depth = Math.min(3, top);
-        int leaves = lv.get(0).length;
-        double boxH = 34;
-        double boxW = Math.min(64, w / (1 << depth) - 4);
-        double rowGap = (h - boxH - 12) / Math.max(1, depth);
-        List<Integer> bad = lastVerify == null ? List.of() : lastVerify.corrupted();
-
-        // лінії від вузлів до батьків
-        g.setStroke(Color.web("#334155"));
-        g.setLineWidth(1.2);
-        for (int d = 1; d <= depth; d++) {
-            int count = lv.get(top - d).length;
-            for (int i = 0; i < count; i++) {
-                double x1 = w * (i + 0.5) / (1 << d), y1 = 6 + boxH / 2 + d * rowGap - boxH / 2;
-                double x2 = w * (i / 2 + 0.5) / (1 << (d - 1)), y2 = 6 + boxH / 2 + (d - 1) * rowGap + boxH / 2;
-                g.strokeLine(x1, y1, x2, y2);
-            }
-        }
-
-        for (int d = 0; d <= depth; d++) {
-            int level = top - d;
-            byte[][] nodes = lv.get(level);
-            double cy = 6 + boxH / 2 + d * rowGap;
-            for (int i = 0; i < nodes.length; i++) {
-                double cx = w * (i + 0.5) / (1 << d);
-                long lo = (long) i << level;
-                long hi = Math.min(((long) (i + 1) << level) - 1, leaves - 1);
-                final int nodeIdx = i, nodeLevel = level;
-                boolean hasBad = bad.stream().anyMatch(c -> (c >> nodeLevel) == nodeIdx);
-
-                Color stroke, fill;
-                if (lastVerify != null) {
-                    if (hasBad) { stroke = Color.web("#F59E0B"); fill = Color.web("#78350F"); }
-                    else if (lastVerify.intactAfterRepair()) { stroke = Color.web("#10B981"); fill = Color.web("#064E3B"); }
-                    else { stroke = Color.web("#EF4444"); fill = Color.web("#7F1D1D"); }
-                } else if (d == 0) {
-                    stroke = Color.web("#A78BFA"); fill = Color.web("#4C1D95");
-                } else {
-                    stroke = Color.web("#6366F1"); fill = Color.web("#1E1B4B");
-                }
-                g.setFill(fill);
-                g.fillRoundRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH, 8, 8);
-                g.setStroke(stroke);
-                g.setLineWidth(1.5);
-                g.strokeRoundRect(cx - boxW / 2, cy - boxH / 2, boxW, boxH, 8, 8);
-
-                g.setFill(Color.WHITE);
-                g.setFont(Font.font("Monospaced", 10));
-                g.fillText(MerkleDeltaVault.shortHex(nodes[i]), cx, cy - 2);
-                g.setFill(Color.web("#94A3B8"));
-                g.setFont(Font.font(8));
-                g.fillText(lo == hi ? "#" + lo : lo + "–" + hi, cx, cy + 11);
-            }
-        }
-        g.setTextAlign(TextAlignment.LEFT);
-        g.setFill(Color.web("#64748B"));
-        g.setFont(Font.font(9));
-        g.fillText("Merkle root", 6, 14);
+        long elapsed = Math.min(clockSec, blackoutEndSec) - blackoutStartSec;
+        return (int) Math.max(0, elapsed / 60);
     }
 
     /** Змінює поточну локацію і синхронізує випадаючий список (без повторного запуску його обробника). */
@@ -594,8 +473,6 @@ public class AegisBioApp extends Application {
         lastBlackoutReportHour = 0;
         lastAutoActionClock.clear();
         autopilotRecent.clear();
-        vault.clear();
-        lastVerify = null;
 
         setLocationSilently(MissionLocation.SOLAR_CONJUNCTION);
         addLog("📡❌ [Блекаут] Зв'язок із Землею втрачено на " + formatDuration(duration).replaceAll("\\s+", " ")
@@ -606,10 +483,8 @@ public class AegisBioApp extends Application {
     /** completed = true: таймер дійшов до нуля; false: екіпаж перервав режим достроково. */
     private void endBlackout(boolean completed) {
         if (!blackoutActive) return;
-        syncVault();
         long elapsed = Math.min(clockSec, blackoutEndSec) - blackoutStartSec;
         int packets = blackoutPackets();
-        String rootHex = MerkleDeltaVault.shortHex(vault.root());
         int actions = blackoutAiActions;
         double rad = blackoutRadReduced;
 
@@ -617,20 +492,14 @@ public class AegisBioApp extends Application {
         setLocationSilently(locationBeforeBlackout);
 
         addLog(completed
-                ? "📡✅ [Блекаут] Зв'язок відновлено. У буфері пакетів телеметрії: " + packets
-                + ", Merkle-корінь: " + rootHex + "…"
-                : "⚠️ [Блекаут] Режим перервано достроково. У буфері пакетів телеметрії: " + packets
-                + ", Merkle-корінь: " + rootHex + "…");
+                ? "📡✅ [Блекаут] Зв'язок відновлено. У Х'юстон передано пакетів телеметрії: " + packets + "."
+                : "⚠️ [Блекаут] Режим перервано достроково. У Х'юстон передано пакетів телеметрії: " + packets + ".");
         updateBlackoutStatus();
 
         String summary = String.format(Locale.US,
-                "Тривалість блекауту: %s%nПакетів у буфері: %d (дельта %s, без стиснення %s, ×%.1f)%n"
-                        + "Merkle-корінь для Х'юстона: %s… (32 Б)%nДій AI-автопілота: %d%n"
-                        + "Дозу радіації знижено щитами: %.2f мЗв%n%n"
-                        + "Перевірити цілісність пакетів можна у вікні Blackout-Vault.",
-                formatDuration(elapsed).replaceAll("\\s+", " "), packets,
-                formatBytes(vault.packedBytes()), formatBytes(vault.rawBytes()), vault.ratio(),
-                rootHex, actions, rad);
+                "Тривалість блекауту: %s%nПакетів телеметрії передано: %d (~%d КБ)%nДій AI-автопілота: %d%n"
+                        + "Дозу радіації знижено щитами: %.2f мЗв",
+                formatDuration(elapsed).replaceAll("\\s+", " "), packets, packets * PACKET_KB, actions, rad);
         Alert alert = new Alert(Alert.AlertType.INFORMATION, summary, ButtonType.OK);
         Stage owner = (blackoutStage != null && blackoutStage.isShowing()) ? blackoutStage : mainStage;
         if (owner != null) alert.initOwner(owner);
@@ -641,8 +510,6 @@ public class AegisBioApp extends Application {
     /** Тихе скасування (наприклад, при повному скиданні симуляції). */
     private void abortBlackoutSilently() {
         blackoutActive = false;
-        vault.clear();
-        lastVerify = null;
         setLocationSilently(locationBeforeBlackout);
         updateBlackoutStatus();
     }
@@ -664,7 +531,6 @@ public class AegisBioApp extends Application {
             endBlackout(true);
             return;
         }
-        syncVault();
         long scan = clockSec / AUTOPILOT_SCAN_SEC;
         if (scan != lastAutopilotScan) {
             lastAutopilotScan = scan;
@@ -735,21 +601,6 @@ public class AegisBioApp extends Application {
         }
 
         recompute();
-        // MindCare: тимчасові піки (наприклад, після тренування) віднімаємо, щоб не вважати їх стресом
-        StressEngine.Assessment mind = mindEngine.update(new StressEngine.Reading(
-                currentTelemetry.get(MetricType.HEART_RATE) - tempOffsets.getOrDefault(MetricType.HEART_RATE, 0.0),
-                currentTelemetry.get(MetricType.HRV) - tempOffsets.getOrDefault(MetricType.HRV, 0.0),
-                currentTelemetry.get(MetricType.HYDRATION),
-                sleepHours), clockSec);
-        if (mindEngine.shouldSuggest(clockSec)) {
-            addLog("🧠 [MindCare] Стрес тримається (" + mind.index() + "/100, " + mind.level().label
-                    + "). " + StressEngine.protocolFor(mind.level()));
-        }
-        // Критичний стрес, що тримається: вікно MindCare відкривається саме (також під час блекауту)
-        if (mindEngine.shouldAlertCritical(clockSec)) {
-            addLog("🚨 [MindCare] Критичний стрес (" + mind.index() + "/100). Відкрито вікно підтримки.");
-            openMindCare();
-        }
         recordHistory();
         updateAllTelemetryViews();
         updateTrendChart();
@@ -1200,7 +1051,8 @@ public class AegisBioApp extends Application {
         MEDKIT("💊", "Аптечка", "Таблетки з безпечною дозою"),
         TRENDS("📈", "Історія і прогноз", "Що було і що буде"),
         MISSION("🛰️", "Місія", "Зв'язок, дані, тести"),
-        MESH_CREW("👥", "Команда (Mesh)", "P2P зв'язок та статус екіпажу");
+        MESH_CREW("👥", "Команда (Mesh)", "P2P зв'язок та статус екіпажу"),
+        SOURCES("📚", "Ризики і джерела", "Наукова основа: NASA, CSA");
 
         final String icon;
         final String title;
@@ -1458,6 +1310,7 @@ public class AegisBioApp extends Application {
         screens.put(Screen.TRENDS, buildTrendsScreen());
         screens.put(Screen.MISSION, buildMissionScreen());
         screens.put(Screen.MESH_CREW, buildCrewMeshScreen());
+        screens.put(Screen.SOURCES, scroll(new SourcesPanel()));
 
         for (Node n : screens.values()) stack.getChildren().add(n);
 
@@ -1729,6 +1582,13 @@ public class AegisBioApp extends Application {
         hint.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
 
         VBox texts = new VBox(4, name, statusRow, range, hint);
+        SpaceSources.Risk nasaRisk = SpaceSources.forMetric(type.name());
+        if (nasaRisk != null) {
+            Hyperlink src = SourceLinks.link("📎 Джерело NASA ↗", nasaRisk.source().url());
+            src.setTooltip(new Tooltip("NASA HRP: " + nasaRisk.title() + "\n" + nasaRisk.source().url()
+                    + "\nКлік відкриє сторінку в браузері"));
+            texts.getChildren().add(src);
+        }
         HBox.setHgrow(texts, Priority.ALWAYS);
         HBox row = new HBox(12, gauge, texts);
         row.setAlignment(Pos.CENTER_LEFT);
@@ -1788,6 +1648,15 @@ public class AegisBioApp extends Application {
         dnaRow.setPadding(new Insets(8));
         dnaRow.setStyle(CARD_STYLE);
         space.getChildren().add(dnaRow);
+
+        Label csaNote = new Label("На МКС близько " + Math.round(SpaceSources.NEUTRON_SHARE_ISS * 100) + "% радіації дають нейтрони. Вони особливо шкідливі, тож Канада "
+                + "розробляє прилад CANS, який вимірює їх автономно. Це дані для МКС: у польоті до Марса частка може бути іншою.");
+        csaNote.setWrapText(true);
+        csaNote.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
+        VBox csaBox = new VBox(4, csaNote, SourceLinks.row("", SpaceSources.CSA_RADIATION));
+        csaBox.setPadding(new Insets(8));
+        csaBox.setStyle(CARD_STYLE);
+        space.getChildren().add(csaBox);
 
         VBox root = new VBox(14, summary, heart, breath, space);
         root.setPadding(new Insets(2, 4, 2, 2));
@@ -1991,7 +1860,8 @@ public class AegisBioApp extends Application {
         VBox locBlock = HoloUi.block("🛰️", "Де ми та зв'язок із Землею", "Оберіть місце польоту: схема покаже сигнал",
                 "Зелені точки: сигнал, що летить до Землі. Чим далі корабель, тим довше сигнал іде, "
                         + "тому лікар на Землі відповідає пізніше. У «Сонячному з'єднанні» Сонце блокує зв'язок.",
-                locLabel, locationBox, orbitHolder, latencyNoticeLabel);
+                locLabel, locationBox, orbitHolder, latencyNoticeLabel,
+                SourceLinks.row("Основа:", SpaceSources.hazard("D").source()));
 
         Button importBtn = new Button("📂 Завантажити дані з файлу (CSV)");
         importBtn.setStyle("-fx-background-color: #0284C7; -fx-text-fill: white; -fx-font-weight: bold; "
@@ -2011,14 +1881,8 @@ public class AegisBioApp extends Application {
         blackoutBtn.setTooltip(new Tooltip("Коли зв'язку немає, штучний інтелект сам піклується про екіпаж."));
         blackoutBtn.setOnAction(e -> openBlackoutVaultWindow(mainStage));
 
-        Button mindBtn = new Button("🧠 MindCare");
-        mindBtn.setStyle("-fx-background-color: #0891B2; -fx-text-fill: white; -fx-font-weight: bold; "
-                + "-fx-cursor: hand; -fx-background-radius: 8;");
-        mindBtn.setTooltip(new Tooltip("Психологічна підтримка: дихання, чек-ін настрою, квести, SOS."));
-        mindBtn.setOnAction(e -> openMindCare());
-
         FlowPane dataRow = new FlowPane(10, 10);
-        dataRow.getChildren().addAll(importBtn, reportBtn, blackoutBtn, mindBtn);
+        dataRow.getChildren().addAll(importBtn, reportBtn, blackoutBtn);
         VBox dataBlock = HoloUi.block("📂", "Дані, звіти та автономний режим", "Імпорт, збереження та режим без зв'язку",
                 "Імпорт читає готові дані з файлу. Звіт можна зберегти й показати лікарю. "
                         + "Блекаут: режим, коли Земля недоступна.", dataRow);
@@ -2059,21 +1923,6 @@ public class AegisBioApp extends Application {
             }
         });
         return scroll(crewPanel);
-    }
-
-    // ============ MINDCARE ============
-    private void openMindCare() {
-        MindCareWindow.open(mainStage, new MindCareWindow.Hooks(
-                mindEngine,
-                () -> clockSec,
-                this::addLog,
-                () -> {
-                    Activity a = findActivity("BREATH");
-                    if (a != null && blockedReason(a) == null) applyActivity(a);
-                },
-                () -> addLog(blackoutActive
-                        ? "🆘 [MindCare SOS] Зв'язку немає: сигнал збережено в локальному буфері й піде в ЦУП після відновлення."
-                        : "🆘 [MindCare SOS] Сигнал психологічної підтримки надіслано в ЦУП.")));
     }
 
     // ============ НИЖНІЙ РЯДОК ============
@@ -2999,8 +2848,6 @@ public class AegisBioApp extends Application {
                 "%nВПРАВИ ТА ВОДА:%n- Тренування: %d з 150 хв%n- Вода: %.1f з 2.8 л%n- Сон: %.1f з 8 год%n",
                 countermeasureMinutes, hydrationLiters, sleepHours));
 
-        sb.append("\nПСИХОЛОГІЧНИЙ СТАН (MindCare):\n").append(MindCareWindow.summaryText());
-
         sb.append("\nЖУРНАЛ ДІЙ:\n");
         if (logLines.isEmpty()) sb.append("(порожньо)\n");
         for (String line : logLines) sb.append(line).append('\n');
@@ -3149,7 +2996,7 @@ public class AegisBioApp extends Application {
                 createBlackoutItem("✓ Вода: якщо запас біля нижньої межі, AI сам п'є 400 мл (у межах денної норми)."),
                 createBlackoutItem("✓ Серце й тиск: при підвищеному пульсі, тиску чи низькому HRV AI робить дихальну вправу."),
                 createBlackoutItem("✓ Тиск на зоровий нерв: біля межі норми AI запускає сеанс LBNP."),
-                createBlackoutItem("✓ Телеметрія: щохвилини місії в буфер іде дельта-пакет (лише зміни показників), його хеш потрапляє в дерево Меркла.")
+                createBlackoutItem("✓ Телеметрія: щохвилини місії пакет шифрується й іде в локальний буфер.")
         );
 
         Label recentTitle = new Label("ОСТАННІ ДІЇ АВТОПІЛОТА:");
@@ -3159,82 +3006,6 @@ public class AegisBioApp extends Application {
         recentActions.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 11px;");
 
         aiDecisionsCard.getChildren().addAll(aiTitle, decisionsList, recentTitle, recentActions);
-
-        // --- Merkle-Delta Sync Vault: дельта-пакети, дерево Меркла, перевірка цілісності ---
-        VBox vaultCard = new VBox(8);
-        vaultCard.setPadding(new Insets(12));
-        vaultCard.setStyle("-fx-background-color: #0F172A; -fx-border-color: #0EA5E9; -fx-border-radius: 6; -fx-background-radius: 6;");
-
-        Label vaultTitle = new Label("🌳 MERKLE-DELTA SYNC VAULT: стиснення й перевірка пакетів");
-        vaultTitle.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 12px; -fx-font-weight: bold;");
-
-        Label vaultHint = new Label("Пакет містить лише зміни показників відносно попереднього. Хеші пакетів зводяться в дерево Меркла: "
-                + "на Землю йде один корінь (32 Б). Якщо пакет пошкоджено, Земля знаходить його по дереву й просить повторити лише його.");
-        vaultHint.setWrapText(true);
-        vaultHint.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 10px;");
-
-        Label vaultStats = new Label();
-        vaultStats.setWrapText(true);
-        vaultStats.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 11px;");
-
-        Canvas treeCanvas = new Canvas(520, 200);
-
-        CheckBox corruptBox = new CheckBox("☢ Імітувати збій: пошкодити випадковий пакет під час передачі (демо)");
-        corruptBox.setSelected(true);
-        corruptBox.setStyle("-fx-text-fill: #FCA5A5; -fx-font-size: 11px;");
-
-        Button verifyBtn = new Button("🔍 Перевірити цілісність дельти після відновлення зв'язку");
-        verifyBtn.setMaxWidth(Double.MAX_VALUE);
-        verifyBtn.setStyle("-fx-background-color: #0369A1; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
-
-        Label verifyResult = new Label();
-        verifyResult.setWrapText(true);
-        verifyResult.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 11px;");
-
-        Runnable refreshVault = () -> {
-            boolean linkDown = blackoutActive;
-            int packets = vault.size();
-            if (packets == 0) {
-                vaultStats.setText("📦 Буфер порожній: пакети з'являться, коли почнеться блекаут (1 пакет = 1 хвилина місії).");
-            } else {
-                int treeLevels = vault.levels().size();
-                vaultStats.setText(String.format(Locale.US,
-                        "📦 Пакетів: %d  |  дельта: %s  проти  %s без стиснення (×%.1f)%n"
-                                + "🌳 Дерево: %d рівнів (на схемі верхні %d)  |  Merkle-корінь: %s…",
-                        packets, formatBytes(vault.packedBytes()), formatBytes(vault.rawBytes()), vault.ratio(),
-                        treeLevels, Math.min(4, treeLevels), MerkleDeltaVault.shortHex(vault.root())));
-            }
-            drawMerkleTree(treeCanvas);
-            verifyBtn.setDisable(linkDown || packets == 0);
-            corruptBox.setDisable(linkDown || packets == 0);
-            if (linkDown) {
-                verifyResult.setText("🔒 Перевірка стане доступною після відновлення зв'язку із Землею.");
-            } else if (packets == 0) {
-                verifyResult.setText("");
-            } else if (lastVerify == null) {
-                verifyResult.setText("📡 Зв'язок відновлено. Земля отримала корінь дерева; натисніть кнопку, щоб перевірити пакети.");
-            } else {
-                verifyResult.setText(describeVerify(lastVerify));
-            }
-        };
-
-        verifyBtn.setOnAction(e -> {
-            if (blackoutActive || vault.size() == 0) return;
-            List<byte[]> received = vault.transmissionCopy(); // те, що дійшло до Землі
-            if (corruptBox.isSelected()) {
-                int idx = vaultRng.nextInt(received.size());
-                MerkleDeltaVault.flipBit(received, idx, vaultRng.nextInt(received.get(idx).length * 8));
-            }
-            lastVerify = vault.verify(received);
-            addLog(lastVerify.intactOnFirstCheck()
-                    ? "🔐 [Merkle] Корені збіглися: усі " + lastVerify.packets() + " пакетів цілі."
-                    : "🔐 [Merkle] Знайдено пошкоджені пакети: " + lastVerify.corrupted()
-                    + ". Повторно передано " + formatBytes(lastVerify.repairBytes())
-                    + " замість " + formatBytes(lastVerify.fullResendBytes()) + ".");
-            refreshVault.run();
-        });
-
-        vaultCard.getChildren().addAll(vaultTitle, vaultHint, vaultStats, treeCanvas, corruptBox, verifyBtn, verifyResult);
 
         Button closeBtn = new Button("Повернутися до моніторингу екіпажу");
         closeBtn.setMaxWidth(Double.MAX_VALUE);
@@ -3249,17 +3020,15 @@ public class AegisBioApp extends Application {
                 countdownDisplay.setText(formatDuration(blackoutRemainingSec()));
                 double total = Math.max(1, blackoutEndSec - blackoutStartSec);
                 blackoutProgress.setProgress(Math.min(1.0, Math.max(0.0, (clockSec - blackoutStartSec) / total)));
-                bufferStatus.setText("📦 Локальний буфер: " + blackoutPackets() + " пакетів (дельта "
-                        + formatBytes(vault.packedBytes()) + ") чекають відправки. Дій AI: " + blackoutAiActions);
+                bufferStatus.setText("📦 Локальний буфер: " + blackoutPackets() + " пакетів (~" + blackoutPackets() * PACKET_KB
+                        + " КБ) чекають відправки. Дій AI: " + blackoutAiActions);
                 startStopBtn.setText("⏹ Перервати блекаут");
                 startStopBtn.setStyle("-fx-background-color: #B91C1C; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
             } else {
                 counterTitle.setText("БЛЕКАУТ НЕ АКТИВНИЙ. ОБЕРІТЬ ТРИВАЛІСТЬ І ЗАПУСТІТЬ");
                 countdownDisplay.setText("Зв'язок із Землею є");
                 blackoutProgress.setProgress(0);
-                bufferStatus.setText(vault.size() > 0
-                        ? "📦 Передано пакетів: " + vault.size() + " (дельта " + formatBytes(vault.packedBytes()) + ")"
-                        : "📦 Локальний буфер порожній");
+                bufferStatus.setText("📦 Локальний буфер порожній");
                 startStopBtn.setText("▶ Активувати блекаут");
                 startStopBtn.setStyle("-fx-background-color: #7C3AED; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
             }
@@ -3270,7 +3039,6 @@ public class AegisBioApp extends Application {
             recentActions.setText(autopilotRecent.isEmpty()
                     ? (on ? "Поки що втручання не потрібні: показники в нормі." : "—")
                     : String.join("\n", autopilotRecent));
-            refreshVault.run();
         };
         refresh.run();
 
@@ -3284,9 +3052,9 @@ public class AegisBioApp extends Application {
             if (blackoutStage == stage) blackoutStage = null;
         });
 
-        root.getChildren().addAll(header, counterCard, controlsRow, speedHint, vaultCard, aiBoostBtn, aiDecisionsCard, closeBtn);
+        root.getChildren().addAll(header, counterCard, controlsRow, speedHint, aiBoostBtn, aiDecisionsCard, closeBtn);
 
-        Scene scene = new Scene(scroll(root), 620, 780);
+        Scene scene = new Scene(scroll(root), 580, 700);
         stage.setScene(scene);
         stage.show();
     }

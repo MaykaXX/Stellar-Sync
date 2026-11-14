@@ -8,14 +8,17 @@ import javafx.scene.control.Tooltip;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.FlowPane;
+import javafx.stage.Window;
 
 /**
- * Клікабельні посилання на джерела. Відкриваються у браузері; якщо система не змогла
- * відкрити, адреса копіюється в буфер обміну.
+ * Клікабельні посилання на джерела. Відкриваються у вбудованому переглядачі застосунку
+ * (SourceBrowserWindow). Якщо він недоступний, сторінка відкривається у системному браузері;
+ * якщо не вийшло і так, адреса копіюється в буфер обміну.
  */
 public final class SourceLinks {
 
     private static HostServices host;
+    private static Window owner;
 
     private static final String LINK_STYLE = "-fx-text-fill: #38BDF8; -fx-font-size: 11px; -fx-padding: 0; "
             + "-fx-border-color: transparent; -fx-cursor: hand;";
@@ -28,7 +31,26 @@ public final class SourceLinks {
         host = hostServices;
     }
 
+    /** Те саме, але вікно переглядача прив'язується до головного вікна (закривається разом із ним). */
+    public static void init(HostServices hostServices, Window ownerWindow) {
+        host = hostServices;
+        owner = ownerWindow;
+    }
+
+    /** Відкриває сторінку у вбудованому переглядачі. */
     public static void open(String url) {
+        if (url == null || !(url.startsWith("https://") || url.startsWith("http://"))) return;
+        try {
+            SourceBrowserWindow.open(url, owner, SourceLinks::openExternal);
+            return;
+        } catch (Exception | LinkageError e) {
+            // WebView недоступний (немає javafx-web або системних бібліотек): відкриємо у браузері
+        }
+        openExternal(url);
+    }
+
+    /** Відкриває сторінку у системному браузері; якщо не вийшло, копіює адресу в буфер обміну. */
+    public static void openExternal(String url) {
         try {
             if (host != null) {
                 host.showDocument(url);
@@ -46,7 +68,7 @@ public final class SourceLinks {
         Hyperlink h = new Hyperlink(text);
         h.setStyle(LINK_STYLE);
         h.setFocusTraversable(false);
-        h.setTooltip(new Tooltip(url + "\nКлік відкриє сторінку в браузері"));
+        h.setTooltip(new Tooltip(url + "\nКлік відкриє сторінку у вікні застосунку"));
         h.setOnAction(e -> open(url));
         return h;
     }

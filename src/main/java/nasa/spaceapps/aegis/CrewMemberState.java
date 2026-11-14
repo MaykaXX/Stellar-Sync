@@ -40,6 +40,8 @@ public class CrewMemberState {
         public boolean muted;
         public boolean responding;
         public boolean arrived;
+        /** Допомога вже на місці (хтось дійшов): звук і вібрація вимкнені на всіх пристроях. */
+        public boolean handled;
         public double respondStart;
         public double respondDuration;
 
@@ -91,6 +93,7 @@ public class CrewMemberState {
     private double graceUntil = -1;
     private boolean timerEndedByAck;
     private CrewStatus status = CrewStatus.NOMINAL;
+    private boolean vitalsCritical;
     private String anomalyText = "";
 
     // ---------- mesh (керує CrewMeshNetwork) ----------
@@ -100,6 +103,7 @@ public class CrewMemberState {
     boolean sosBroadcasted;
     double lastBeacon;
     boolean timerWasRunning;
+    double stableSince = -1;
     final Map<String, IncomingAlert> alerts = new LinkedHashMap<>();
 
     public CrewMemberState(String id, String name, String role,
@@ -157,6 +161,7 @@ public class CrewMemberState {
 
         boolean critical = hr > 125 || hr < 45 || hrv < 25 || hydration < 70 || sudden;
         boolean warning = hr > 105 || hr < 55 || hrv < 40 || hydration < 82;
+        vitalsCritical = critical;
         boolean inGrace = now < graceUntil;
 
         anomalyText = describe(sudden);
@@ -208,7 +213,7 @@ public class CrewMemberState {
         autoSos = false;
         manualSos = false;
         anomalyActive = false;
-        graceUntil = now + 30;
+        graceUntil = now + 120;
         return something;
     }
 
@@ -218,7 +223,11 @@ public class CrewMemberState {
         autoSos = false;
         manualSos = false;
         anomalyActive = false;
-        graceUntil = now + 30;
+        graceUntil = now + 60;
+    }
+
+    void resetGrace() {
+        graceUntil = -1;
     }
 
     void raiseManualSos() {
@@ -249,6 +258,7 @@ public class CrewMemberState {
     public boolean isAnomalyActive() { return anomalyActive; }
     public void setAnomalyActive(boolean on) { this.anomalyActive = on; }
     public void setDemoAnomaly(double hr, double hrv) { this.anomHr = hr; this.anomHrv = hrv; }
+    public boolean isVitalsCritical() { return vitalsCritical; }
     public boolean isHealthy() {
         return !isSosActive() && !offline && status != CrewStatus.CRITICAL;
     }

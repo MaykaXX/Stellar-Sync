@@ -39,6 +39,7 @@ public final class CrewMeshPanel extends VBox {
     private int lastSosCount = -1;
     private double lastChipUpdate = -1;
     private double clock = 0;
+    private boolean mapToggle = false;
 
     /**
      * @param appLog    куди дублювати важливі події (журнал дій основної програми)
@@ -98,11 +99,20 @@ public final class CrewMeshPanel extends VBox {
         chips.setAlignment(Pos.CENTER_LEFT);
 
         commanderSos.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(commanderSos, Priority.ALWAYS);
         commanderSos.setOnAction(e -> {
             CrewMemberState me = net.local();
             if (me.isSosActive()) net.cancelSos(me, me);
             else net.setManualSos(me, true);
         });
+        // «Усе гаразд» для вас (Командира): завжди під рукою, поруч із SOS
+        Button commanderOk = new Button("✅ Усе гаразд (я в нормі)");
+        commanderOk.setMinWidth(Region.USE_PREF_SIZE);
+        commanderOk.setStyle("-fx-background-color: #047857; -fx-text-fill: white; -fx-font-weight: bold; "
+                + "-fx-cursor: hand; -fx-padding: 10 16; -fx-background-radius: 8;");
+        commanderOk.setOnAction(e -> net.acknowledge(net.local()));
+        HBox sosRow = new HBox(10, commanderSos, commanderOk);
+        sosRow.setAlignment(Pos.CENTER_LEFT);
 
         Pane mapHolder = HoloUi.fill(map, 270);
         mapHolder.setStyle("-fx-border-color: #1E293B; -fx-border-radius: 8; -fx-background-radius: 8;");
@@ -119,7 +129,7 @@ public final class CrewMeshPanel extends VBox {
                 + "3) У інших спрацюють вібрація, звук і маячок на схемі. Натисніть «Іду на допомогу».\n"
                 + "4) «📡 Зв'язок» вимикає радіо вузла, а сусіди помітять тишу.";
         VBox block = HoloUi.block("🕸️", "Mesh-мережа корабля", "Жива схема: пакети летять між пристроями",
-                how, hint, chips, mapHolder, legend, commanderSos);
+                how, hint, chips, mapHolder, legend, sosRow);
         block.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(block, Priority.ALWAYS);
         return block;
@@ -184,7 +194,8 @@ public final class CrewMeshPanel extends VBox {
             if (onSosCount != null) onSosCount.accept(sos);
         }
         if (!visible) return;
-        map.render(net.now());
+        mapToggle = !mapToggle;
+        if (mapToggle) map.render(net.now());
         if (clock - lastChipUpdate > 0.4) {
             lastChipUpdate = clock;
             refreshChips();

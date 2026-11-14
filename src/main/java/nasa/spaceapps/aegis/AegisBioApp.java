@@ -226,7 +226,7 @@ public class AegisBioApp extends Application {
     @Override
     public void start(Stage primaryStage) {
         mainStage = primaryStage;
-        SourceLinks.init(getHostServices());
+        SourceLinks.init(getHostServices(), primaryStage);
         initDefaultTelemetry();
 
         BorderPane root = new BorderPane();

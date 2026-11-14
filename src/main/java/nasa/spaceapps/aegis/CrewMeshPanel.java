@@ -178,6 +178,11 @@ public final class CrewMeshPanel extends VBox {
         }
     }
 
+    /** Піднімає ручний SOS Командира (наприклад, із вікна MindCare). */
+    public void raiseCommanderSos() {
+        net.setManualSos(net.local(), true);
+    }
+
     // ============ ОНОВЛЕННЯ ============
     /** Дані пристрою користувача з основної програми. */
     public void setLocalVitals(double hr, double hrv, double hydration) {

@@ -152,6 +152,7 @@ public final class CrewMeshNetwork {
         return n;
     }
 
+
     // ============ ДІЇ КОРИСТУВАЧА ============
     public void setLocalVitals(double hr, double hrv, double hyd) {
         local().setExternalVitals(hr, hrv, hyd);

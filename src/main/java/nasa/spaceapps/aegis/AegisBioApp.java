@@ -302,6 +302,7 @@ public class AegisBioApp extends Application {
         stressEngine.reset();
         journal.reset();
         if (blackoutActive) abortBlackoutSilently();
+        resetVault();
         showEffectsPlaceholder();
         updateHabitViews();
         updateAllTelemetryViews();
@@ -377,8 +378,17 @@ public class AegisBioApp extends Application {
     private static final int EMERGENCY_CHARGES_MAX = 3;
     /** Як часто (у секундах часу місії) AI-автопілот перевіряє показники. */
     private static final long AUTOPILOT_SCAN_SEC = 15;
-    /** Приблизний розмір одного крипто-пакета телеметрії, КБ (один пакет на хвилину місії). */
-    private static final int PACKET_KB = 2;
+    /**
+     * Merkle-Delta Sync Vault: щохвилини місії в буфер потрапляє один дельта-пакет з усіма показниками,
+     * його хеш стає листком дерева Меркла. Буфер живе й після відновлення зв'язку (до наступного блекауту),
+     * щоб Земля могла перевірити цілісність.
+     */
+    private final MerkleDeltaVault vault = new MerkleDeltaVault(MetricType.values().length);
+    /** «Копія в ефірі», яку отримала Земля (її можна пошкодити радіацією, потім перевірити). */
+    private List<byte[]> vaultAir = null;
+    /** Пакети, які Земля знайшла пошкодженими під час останньої перевірки (підсвічуються в дереві). */
+    private Set<Integer> vaultFound = Set.of();
+    private String vaultVerifyText = "";
 
     /**
      * Правило автопілота: якщо показник метрики наближається до межі норми
@@ -432,6 +442,33 @@ public class AegisBioApp extends Application {
         return (int) Math.max(0, elapsed / 60);
     }
 
+    /** Знімок усіх показників у порядку MetricType.values() (так їх кодує vault). */
+    private double[] telemetrySnapshot() {
+        MetricType[] all = MetricType.values();
+        double[] v = new double[all.length];
+        for (int i = 0; i < all.length; i++) v[i] = currentTelemetry.getOrDefault(all[i], 0.0);
+        return v;
+    }
+
+    /** Докладає в vault пакети за кожну повну хвилину місії, що минула (при прискореному часі їх може бути багато). */
+    private void feedVault() {
+        int due = blackoutPackets();
+        if (vault.size() >= due) return;
+        double[] snap = telemetrySnapshot();
+        while (vault.size() < due) vault.append(snap);
+    }
+
+    private void resetVault() {
+        vault.clear();
+        vaultAir = null;
+        vaultFound = Set.of();
+        vaultVerifyText = "";
+    }
+
+    private static String fmtBytes(long b) {
+        return b < 1024 ? b + " Б" : String.format(Locale.US, "%.1f КБ", b / 1024.0);
+    }
+
     /** Змінює поточну локацію і синхронізує кнопки вибору (без повторного запуску їх обробника). */
     private void setLocationSilently(MissionLocation loc) {
         currentLocation = loc;
@@ -455,6 +492,7 @@ public class AegisBioApp extends Application {
         lastBlackoutReportHour = 0;
         lastAutoActionClock.clear();
         autopilotRecent.clear();
+        resetVault();
 
         setLocationSilently(MissionLocation.SOLAR_CONJUNCTION);
         addLog("📡❌ [Блекаут] Зв'язок із Землею втрачено на " + formatDuration(duration).replaceAll("\\s+", " ")
@@ -465,6 +503,7 @@ public class AegisBioApp extends Application {
     /** completed = true: таймер дійшов до нуля; false: екіпаж перервав режим достроково. */
     private void endBlackout(boolean completed) {
         if (!blackoutActive) return;
+        feedVault(); // догнати пакети, які ще не потрапили в буфер
         long elapsed = Math.min(clockSec, blackoutEndSec) - blackoutStartSec;
         int packets = blackoutPackets();
         int actions = blackoutAiActions;
@@ -474,14 +513,20 @@ public class AegisBioApp extends Application {
         setLocationSilently(locationBeforeBlackout);
 
         addLog(completed
-                ? "📡✅ [Блекаут] Зв'язок відновлено. У Х'юстон передано пакетів телеметрії: " + packets + "."
-                : "⚠️ [Блекаут] Режим перервано достроково. У Х'юстон передано пакетів телеметрії: " + packets + ".");
+                ? "📡✅ [Блекаут] Зв'язок відновлено. У буфері пакетів телеметрії: " + packets
+                + ", корінь Merkle: " + MerkleDeltaVault.shortHex(vault.root()) + "."
+                : "⚠️ [Блекаут] Режим перервано достроково. У буфері пакетів телеметрії: " + packets
+                + ", корінь Merkle: " + MerkleDeltaVault.shortHex(vault.root()) + ".");
         updateBlackoutStatus();
 
         String summary = String.format(Locale.US,
-                "Тривалість блекауту: %s%nПакетів телеметрії передано: %d (~%d КБ)%nДій автопілота: %d%n"
-                        + "Дозу радіації знижено щитами: %.2f мЗв",
-                formatDuration(elapsed).replaceAll("\\s+", " "), packets, packets * PACKET_KB, actions, rad);
+                "Тривалість блекауту: %s%nПакетів у буфері: %d (дельта %s замість %s, стиснення ×%.1f)%n"
+                        + "Корінь Merkle: %s%nДій автопілота: %d%n"
+                        + "Дозу радіації знижено щитами: %.2f мЗв%n%n"
+                        + "Цілісність можна перевірити у вікні «Режим без зв'язку».",
+                formatDuration(elapsed).replaceAll("\\s+", " "), packets,
+                fmtBytes(vault.packedBytes()), fmtBytes(vault.rawBytes()), vault.ratio(),
+                MerkleDeltaVault.shortHex(vault.root()), actions, rad);
         Alert alert = new Alert(Alert.AlertType.INFORMATION, summary, ButtonType.OK);
         Stage owner = (blackoutStage != null && blackoutStage.isShowing()) ? blackoutStage : mainStage;
         if (owner != null) alert.initOwner(owner);
@@ -492,6 +537,7 @@ public class AegisBioApp extends Application {
     /** Тихе скасування (наприклад, при повному скиданні симуляції). */
     private void abortBlackoutSilently() {
         blackoutActive = false;
+        resetVault();
         setLocationSilently(locationBeforeBlackout);
         updateBlackoutStatus();
     }
@@ -509,6 +555,7 @@ public class AegisBioApp extends Application {
 
     /** Один крок блекауту (викликається з tick()): таймер, автопілот, періодичний звіт. */
     private void blackoutStep() {
+        feedVault();
         if (clockSec >= blackoutEndSec) {
             endBlackout(true);
             return;
@@ -2777,7 +2824,7 @@ public class AegisBioApp extends Application {
                 createBlackoutItem("✓ Вода: якщо запас біля нижньої межі, автопілот сам п'є 400 мл (у межах денної норми)."),
                 createBlackoutItem("✓ Серце й тиск: при підвищеному пульсі, тиску чи низькому стрес-балансі автопілот робить дихальну вправу."),
                 createBlackoutItem("✓ Тиск на зоровий нерв: біля межі норми автопілот запускає тренування ніг під низьким тиском (LBNP)."),
-                createBlackoutItem("✓ Телеметрія: щохвилини місії пакет шифрується й іде в локальний буфер.")
+                createBlackoutItem("✓ Телеметрія: щохвилини місії в буфер іде дельта-пакет (лише зміни), його хеш — листок дерева Меркла.")
         );
 
         Label recentTitle = new Label("ОСТАННІ ДІЇ АВТОПІЛОТА:");
@@ -2788,10 +2835,83 @@ public class AegisBioApp extends Application {
 
         aiDecisionsCard.getChildren().addAll(aiTitle, decisionsList, recentTitle, recentActions);
 
+        // --- Merkle-Delta Sync Vault: дерево хешів і перевірка цілісності ---
+        VBox vaultCard = new VBox(8);
+        vaultCard.setPadding(new Insets(12));
+        vaultCard.setStyle("-fx-background-color: #1E293B; -fx-border-color: #334155; -fx-border-radius: 6; -fx-background-radius: 6;");
+
+        Label vaultTitle = new Label("MERKLE-DELTA SYNC VAULT: ЦІЛІСНІСТЬ БУФЕРА");
+        vaultTitle.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 24px; -fx-font-weight: bold;");
+
+        Label vaultStats = new Label();
+        vaultStats.setWrapText(true);
+        vaultStats.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 20px;");
+
+        MerkleTreeView merkleView = new MerkleTreeView(500);
+
+        Label vaultHint = new Label();
+        vaultHint.setWrapText(true);
+        vaultHint.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 20px;");
+
+        Label verifyResult = new Label();
+        verifyResult.setWrapText(true);
+        verifyResult.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 20px;");
+
+        Button corruptBtn = new Button("☢ Імітувати радіацію в ефірі (пошкодити пакет)");
+        corruptBtn.setMaxWidth(Double.MAX_VALUE);
+        corruptBtn.setStyle("-fx-background-color: #B45309; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
+        corruptBtn.setOnAction(e -> {
+            if (blackoutActive || vault.size() == 0) return;
+            vaultAir = vault.transmissionCopy();
+            Random rnd = new Random();
+            int want = vault.size() >= 50 ? 2 : 1;
+            Set<Integer> hit = new TreeSet<>();
+            while (hit.size() < want) hit.add(rnd.nextInt(vault.size()));
+            for (int idx : hit) MerkleDeltaVault.flipBit(vaultAir, idx, rnd.nextInt(1 << 16));
+            vaultFound = Set.of();
+            vaultVerifyText = "☢ В ефірі зіпсовано пакети № " + hit + ". Земля про це ще не знає: натисніть «Перевірити цілісність».";
+            addLog("☢ [Vault] Радіація в ефірі пошкодила пакетів: " + hit.size() + ".");
+            merkleView.show(vault.levels(), vaultFound);
+            verifyResult.setText(vaultVerifyText);
+        });
+
+        Button verifyBtn = new Button("🔍 Перевірити цілісність дельти після відновлення зв'язку");
+        verifyBtn.setMaxWidth(Double.MAX_VALUE);
+        verifyBtn.setStyle("-fx-background-color: #0369A1; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
+        verifyBtn.setOnAction(e -> {
+            if (blackoutActive || vault.size() == 0) return;
+            if (vaultAir == null || vaultAir.size() != vault.size()) vaultAir = vault.transmissionCopy();
+            MerkleDeltaVault.VerifyReport r = vault.verify(vaultAir);
+            vaultFound = new TreeSet<>(r.corrupted());
+            if (r.intactOnFirstCheck()) {
+                vaultVerifyText = "✅ Корені збіглися (" + MerkleDeltaVault.shortHex(r.senderRoot()) + "). Усі "
+                        + r.packets() + " пакетів цілі. Для доказу передано лише " + MerkleDeltaVault.HASH_BYTES + " Б.";
+                addLog("✅ [Vault] Перевірка пройдена: корінь " + MerkleDeltaVault.shortHex(r.senderRoot()) + ".");
+            } else {
+                long spent = r.proofBytes() + r.repairBytes();
+                vaultVerifyText = String.format(Locale.US,
+                        "⚠️ Корені різні: Земля %s, корабель %s.%n"
+                                + "Спуск по дереву: запитано хешів %d (%s), знайдено пошкоджені пакети № %s.%n"
+                                + "Повторно передано лише їх: %s. Разом %s замість %s (дельта-буфер) чи %s (без стиснення).%n"
+                                + "Після ремонту: %s",
+                        MerkleDeltaVault.shortHex(r.receiverRoot()), MerkleDeltaVault.shortHex(r.senderRoot()),
+                        r.hashesFetched(), fmtBytes(r.proofBytes()), r.corrupted(),
+                        fmtBytes(r.repairBytes()), fmtBytes(spent), fmtBytes(r.fullResendBytes()), fmtBytes(r.rawResendBytes()),
+                        r.intactAfterRepair() ? "✅ корені збіглися, дані цілі." : "❌ корені досі не збігаються!");
+                addLog("🔧 [Vault] Знайдено й виправлено пошкоджених пакетів: " + r.corrupted().size() + ".");
+            }
+            merkleView.show(vault.levels(), vaultFound);
+            verifyResult.setText(vaultVerifyText);
+        });
+
+        vaultCard.getChildren().addAll(vaultTitle, vaultStats, merkleView, vaultHint, corruptBtn, verifyBtn, verifyResult);
+
         Button closeBtn = new Button("Повернутися до моніторингу екіпажу");
         closeBtn.setMaxWidth(Double.MAX_VALUE);
         closeBtn.setStyle("-fx-background-color: #334155; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
         closeBtn.setOnAction(e -> stage.close());
+
+        int[] vaultShownSize = {-1};
 
         // --- Оновлення вікна зі стану застосунку (вікно лише показує стан, таймер від нього не залежить) ---
         Runnable refresh = () -> {
@@ -2801,18 +2921,35 @@ public class AegisBioApp extends Application {
                 countdownDisplay.setText(formatDuration(blackoutRemainingSec()));
                 double total = Math.max(1, blackoutEndSec - blackoutStartSec);
                 blackoutProgress.setProgress(Math.min(1.0, Math.max(0.0, (clockSec - blackoutStartSec) / total)));
-                bufferStatus.setText("📦 Локальний буфер: " + blackoutPackets() + " пакетів (~" + blackoutPackets() * PACKET_KB
-                        + " КБ) чекають відправки. Дій автопілота: " + blackoutAiActions);
+                bufferStatus.setText("📦 Локальний буфер: " + vault.size() + " пакетів (" + fmtBytes(vault.packedBytes())
+                        + ") чекають відправки. Дій автопілота: " + blackoutAiActions);
                 startStopBtn.setText("⏹ Вимкнути режим без зв'язку");
                 startStopBtn.setStyle("-fx-background-color: #B91C1C; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
             } else {
                 counterTitle.setText("РЕЖИМ БЕЗ ЗВ'ЯЗКУ ВИМКНЕНО. ОБЕРІТЬ ТРИВАЛІСТЬ І ЗАПУСТІТЬ");
                 countdownDisplay.setText("Зв'язок із Землею є");
                 blackoutProgress.setProgress(0);
-                bufferStatus.setText("📦 Локальний буфер порожній");
+                bufferStatus.setText(vault.size() == 0 ? "📦 Локальний буфер порожній"
+                        : "📦 Буфер останнього блекауту: " + vault.size() + " пакетів (" + fmtBytes(vault.packedBytes())
+                        + "). Можна перевірити цілісність нижче.");
                 startStopBtn.setText("▶ Увімкнути режим без зв'язку");
                 startStopBtn.setStyle("-fx-background-color: #7C3AED; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
             }
+            // Merkle-картка: дерево перемальовуємо лише коли змінилась кількість пакетів
+            if (vault.size() != vaultShownSize[0]) {
+                vaultShownSize[0] = vault.size();
+                merkleView.show(vault.levels(), vaultFound);
+            }
+            vaultStats.setText(vault.size() == 0
+                    ? "Буфер порожній: перший пакет з'явиться за хвилину часу місії."
+                    : String.format(Locale.US, "📦 Пакетів: %d  |  дельта: %s замість %s (стиснення ×%.1f)%n🌳 Корінь Merkle: %s",
+                    vault.size(), fmtBytes(vault.packedBytes()), fmtBytes(vault.rawBytes()), vault.ratio(),
+                    MerkleDeltaVault.fullHex(vault.root()).substring(0, 16) + "…"));
+            vaultHint.setText(on ? "Перевірка стане доступною після відновлення зв'язку із Землею."
+                    : vault.size() == 0 ? "" : "Зв'язок є: можна передати буфер і перевірити його корінь на Землі.");
+            corruptBtn.setDisable(on || vault.size() == 0);
+            verifyBtn.setDisable(on || vault.size() == 0);
+            verifyResult.setText(vaultVerifyText);
             durationBox.setDisable(on);
             aiBoostBtn.setDisable(!on || emergencyCharges <= 0);
             aiBoostBtn.setText("⚡ Аварійне посилення життєзабезпечення, зарядів: "
@@ -2833,9 +2970,9 @@ public class AegisBioApp extends Application {
             if (blackoutStage == stage) blackoutStage = null;
         });
 
-        root.getChildren().addAll(header, counterCard, controlsRow, speedHint, aiBoostBtn, aiDecisionsCard, closeBtn);
+        root.getChildren().addAll(header, counterCard, controlsRow, speedHint, aiBoostBtn, aiDecisionsCard, vaultCard, closeBtn);
 
-        Scene scene = new Scene(scroll(root), 580, 700);
+        Scene scene = new Scene(scroll(root), 580, 760);
         stage.setScene(scene);
         stage.show();
     }

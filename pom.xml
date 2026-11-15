@@ -71,7 +71,7 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>nasa.spaceapps.aegis.AegisBioApp</mainClass>
+                                    <mainClass>nasa.spaceapps.aegis.Launcher</mainClass>
                                 </transformer>
                             </transformers>
                         </configuration>

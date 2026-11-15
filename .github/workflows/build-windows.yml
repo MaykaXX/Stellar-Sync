@@ -1,0 +1,47 @@
+name: Build Windows EXE
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build shaded JAR
+        run: mvn clean package -DskipTests
+
+      - name: Create Windows EXE with jpackage
+        run: |
+          New-Item -ItemType Directory -Force -Path input_jars
+          Copy-Item target/aegis-bio-space-health-1.0.0.jar input_jars/
+          
+          jpackage `
+            --type app-image `
+            --name "AEGIS-BIO" `
+            --input input_jars `
+            --main-jar aegis-bio-space-health-1.0.0.jar `
+            --main-class nasa.spaceapps.aegis.AegisBioApp `
+            --dest dist
+          
+          Compress-Archive -Path dist/AEGIS-BIO -DestinationPath AEGIS-BIO-Windows-x64.zip
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AEGIS-BIO-Windows-x64.zip

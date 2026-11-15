@@ -28,9 +28,11 @@ jobs:
 
       - name: Create Windows EXE with jpackage
         run: |
+          # Створюємо папку для вхідного файлу
           New-Item -ItemType Directory -Force -Path input_jars
           Copy-Item target/aegis-bio-space-health-1.0.0.jar input_jars/
           
+          # Запускаємо jpackage для створення нативного Windows додатка
           jpackage `
             --type app-image `
             --name "AEGIS-BIO" `
@@ -39,6 +41,7 @@ jobs:
             --main-class nasa.spaceapps.aegis.AegisBioApp `
             --dest dist
           
+          # Пакуємо отриману папку в архів
           Compress-Archive -Path dist/AEGIS-BIO -DestinationPath AEGIS-BIO-Windows-x64.zip
 
       - name: Publish Release

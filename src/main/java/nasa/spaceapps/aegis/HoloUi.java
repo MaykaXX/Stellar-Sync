@@ -4,7 +4,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.canvas.Canvas;
-import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Label;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
@@ -13,18 +12,13 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.ArcType;
-import javafx.scene.shape.StrokeLineCap;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
-import javafx.scene.text.TextAlignment;
 import javafx.util.Duration;
 
 import java.util.Locale;
 
 /**
- * Готові «цеглинки» інтерфейсу та голографічні малюнки.
- * Нічого не знає про логіку програми: лише малює те, що йому передали.
+ * Готові «цеглинки» інтерфейсу: блоки, мітки, кольори.
+ * Нічого не знає про логіку програми.
  */
 public final class HoloUi {
 
@@ -70,16 +64,21 @@ public final class HoloUi {
     /** Логічний блок: іконка, заголовок, пояснення, кнопка «?» і вміст. */
     public static VBox block(String icon, String title, String subtitle, String help, Node... content) {
         Label ic = new Label(icon);
-        ic.setStyle("-fx-font-size: 20px;");
+        ic.setStyle("-fx-font-size: 40px;");
+        return block((Node) ic, title, subtitle, help, content);
+    }
+
+    /** Те саме, але з намальованою іконкою (не залежить від шрифтів emoji у системі). */
+    public static VBox block(Node ic, String title, String subtitle, String help, Node... content) {
 
         Label t = new Label(title);
-        t.setStyle("-fx-text-fill: #E0F2FE; -fx-font-size: 14px; -fx-font-weight: bold;");
+        t.setStyle("-fx-text-fill: #E0F2FE; -fx-font-size: 28px; -fx-font-weight: bold;");
 
         VBox titles = new VBox(1, t);
         if (subtitle != null && !subtitle.isEmpty()) {
             Label s = new Label(subtitle);
             s.setWrapText(true);
-            s.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
+            s.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 22px;");
             titles.getChildren().add(s);
         }
         HBox.setHgrow(titles, Priority.ALWAYS);
@@ -107,13 +106,13 @@ public final class HoloUi {
         q.setMinSize(20, 20);
         q.setAlignment(Pos.CENTER);
         q.setStyle("-fx-background-color: #0C4A6E; -fx-text-fill: #E0F2FE; -fx-font-weight: bold; "
-                + "-fx-font-size: 12px; -fx-background-radius: 10; -fx-cursor: help;");
+                + "-fx-font-size: 24px; -fx-background-radius: 10; -fx-cursor: help;");
         Tooltip tip = new Tooltip(text);
         tip.setWrapText(true);
         tip.setMaxWidth(320);
         tip.setShowDelay(Duration.millis(60));
         tip.setShowDuration(Duration.seconds(40));
-        tip.setStyle("-fx-font-size: 12px;");
+        tip.setStyle("-fx-font-size: 24px;");
         Tooltip.install(q, tip);
         return q;
     }
@@ -122,7 +121,7 @@ public final class HoloUi {
     public static void styleChip(Label chip, String text, Color c) {
         chip.setText(text);
         chip.setStyle("-fx-background-color: " + rgba(c, 0.16)
-                + "; -fx-text-fill: " + hex(c) + "; -fx-font-size: 10px; -fx-font-weight: bold; "
+                + "; -fx-text-fill: " + hex(c) + "; -fx-font-size: 20px; -fx-font-weight: bold; "
                 + "-fx-padding: 2 8 2 8; -fx-background-radius: 10; -fx-border-radius: 10; "
                 + "-fx-border-color: " + hex(c) + ";");
     }
@@ -144,275 +143,98 @@ public final class HoloUi {
         return holder;
     }
 
-    // ============ КРУГОВИЙ ПОКАЗНИК ============
-    /** Кругова шкала: кольцо показує, де значення між мінімумом і максимумом, зелена дуга: норма. */
-    public static final class RingGauge extends Canvas {
-        private double frac = 0.5, nomLo = 0.3, nomHi = 0.7;
-        private Color color = CYAN;
-        private String center = "", sub = "";
-
-        public RingGauge(double size) {
-            super(size, size);
-            redraw();
-        }
-
-        public void set(double value, double hardMin, double hardMax, double nomMin, double nomMax,
-                        Color c, String centerText, String subText) {
-            double span = hardMax - hardMin;
-            if (span <= 0) span = 1;
-            this.frac = clamp01((value - hardMin) / span);
-            this.nomLo = clamp01((nomMin - hardMin) / span);
-            this.nomHi = clamp01((nomMax - hardMin) / span);
-            this.color = c;
-            this.center = centerText;
-            this.sub = subText;
-            redraw();
-        }
-
-        private void redraw() {
-            GraphicsContext gc = getGraphicsContext2D();
-            double w = getWidth(), h = getHeight();
-            gc.clearRect(0, 0, w, h);
-            double cx = w / 2, cy = h / 2;
-            double r = Math.min(w, h) / 2 - 9;
-            gc.setLineCap(StrokeLineCap.ROUND);
-            gc.setLineDashes((double[]) null);
-
-            // фонова дуга
-            gc.setStroke(Color.rgb(30, 41, 59, 0.9));
-            gc.setLineWidth(8);
-            gc.strokeArc(cx - r, cy - r, 2 * r, 2 * r, 225, -270, ArcType.OPEN);
-
-            // межі норми (зелена тонка дуга зовні)
-            double rn = r + 6;
-            gc.setStroke(alpha(GREEN, 0.75));
-            gc.setLineWidth(2.5);
-            gc.strokeArc(cx - rn, cy - rn, 2 * rn, 2 * rn, 225 - 270 * nomLo, -270 * (nomHi - nomLo), ArcType.OPEN);
-
-            // значення: світіння і чітка лінія
-            double ext = -270 * Math.max(0.02, frac);
-            gc.setStroke(alpha(color, 0.18));
-            gc.setLineWidth(13);
-            gc.strokeArc(cx - r, cy - r, 2 * r, 2 * r, 225, ext, ArcType.OPEN);
-            gc.setStroke(color);
-            gc.setLineWidth(6);
-            gc.strokeArc(cx - r, cy - r, 2 * r, 2 * r, 225, ext, ArcType.OPEN);
-
-            // маркер на кінці дуги
-            double ang = Math.toRadians(225 - 270 * Math.max(0.02, frac));
-            double mx = cx + r * Math.cos(ang), my = cy - r * Math.sin(ang);
-            gc.setFill(Color.WHITE);
-            gc.fillOval(mx - 3, my - 3, 6, 6);
-
-            gc.setTextAlign(TextAlignment.CENTER);
-            gc.setFill(Color.web("#F8FAFC"));
-            gc.setFont(Font.font("Consolas", FontWeight.BOLD, Math.max(11, r * 0.42)));
-            gc.fillText(center, cx, cy + 3);
-            gc.setFill(TEXT_DIM);
-            gc.setFont(Font.font("Consolas", Math.max(8, r * 0.19)));
-            gc.fillText(sub, cx, cy + r * 0.45);
-            gc.setTextAlign(TextAlignment.LEFT);
-        }
+    // ============ НАМАЛЬОВАНІ ІКОНКИ (працюють на будь-якій системі) ============
+    private static Pane iconPane(double w, double h, Node... nodes) {
+        Pane p = new Pane(nodes);
+        p.setMinSize(w, h);
+        p.setPrefSize(w, h);
+        p.setMaxSize(w, h);
+        p.setMouseTransparent(true);
+        return p;
     }
 
-    // ============ ДНК (радіація) ============
-    /** Обертова спіраль ДНК. Частина «сходинок» червоніє тим більше, чим вища доза радіації. */
-    public static final class DnaHelix extends Canvas {
-        public DnaHelix() {
-            super(120, 160);
-        }
-
-        public void render(double t, double risk, Color base) {
-            GraphicsContext gc = getGraphicsContext2D();
-            double w = getWidth(), h = getHeight();
-            if (w < 10 || h < 10) return;
-            gc.clearRect(0, 0, w, h);
-            gc.setLineDashes((double[]) null);
-            gc.setLineCap(StrokeLineCap.ROUND);
-
-            int n = 22;
-            double amp = w * 0.30;
-            double[] ax = new double[n], bx = new double[n], ys = new double[n];
-            for (int i = 0; i < n; i++) {
-                double y = 8 + i * (h - 16) / (n - 1);
-                double ph = t * 1.5 + i * 0.5;
-                ax[i] = w / 2 + amp * Math.sin(ph);
-                bx[i] = w / 2 - amp * Math.sin(ph);
-                ys[i] = y;
-                double depth = Math.cos(ph);
-                boolean damaged = ((i * 37) % 100) / 100.0 < risk;
-                Color rung = damaged ? RED : base;
-                gc.setStroke(alpha(rung, 0.25 + 0.25 * (depth + 1) / 2));
-                gc.setLineWidth(1.6);
-                gc.strokeLine(ax[i], y, bx[i], y);
-                if (damaged) {
-                    gc.setFill(alpha(RED, 0.9));
-                    gc.fillOval(w / 2 - 2.5, y - 2.5, 5, 5);
-                }
-            }
-            gc.setStroke(alpha(base, 0.85));
-            gc.setLineWidth(2);
-            gc.strokePolyline(ax, ys, n);
-            gc.setStroke(alpha(PURPLE, 0.85));
-            gc.strokePolyline(bx, ys, n);
-            for (int i = 0; i < n; i += 2) {
-                double d = 3 + 1.5 * Math.cos(t * 1.5 + i * 0.5);
-                gc.setFill(alpha(base, 0.95));
-                gc.fillOval(ax[i] - d / 2, ys[i] - d / 2, d, d);
-                gc.setFill(alpha(PURPLE, 0.95));
-                gc.fillOval(bx[i] - d / 2, ys[i] - d / 2, d, d);
-            }
-        }
+    private static javafx.scene.shape.Circle dot(double x, double y, double r, Color fill) {
+        javafx.scene.shape.Circle c = new javafx.scene.shape.Circle(x, y, r);
+        c.setFill(fill);
+        return c;
     }
 
-    // ============ КАРТА МІСІЇ ============
-    /**
-     * Схема «Земля - Місяць - Марс» з кораблем і сигналом зв'язку.
-     * mode: 0 = навколоземна орбіта, 1 = Місяць, 2 = політ до Марса, 3 = сонячне з'єднання (блекаут).
-     */
-    public static final class OrbitMap extends Canvas {
+    /** Іконка «Команда»: троє людей. */
+    public static Node iconTeam() {
+        Color c = CYAN;
+        javafx.scene.shape.Arc l = new javafx.scene.shape.Arc(5.5, 22, 4.5, 6, 0, 180);
+        javafx.scene.shape.Arc r = new javafx.scene.shape.Arc(18.5, 22, 4.5, 6, 0, 180);
+        javafx.scene.shape.Arc m = new javafx.scene.shape.Arc(12, 23, 6.5, 8.5, 0, 180);
+        for (javafx.scene.shape.Arc a : new javafx.scene.shape.Arc[]{l, r, m}) {
+            a.setType(javafx.scene.shape.ArcType.ROUND);
+            a.setFill(a == m ? c : alpha(c, 0.6));
+        }
+        return iconPane(24, 24, l, r, m, dot(5.5, 11.5, 2.8, alpha(c, 0.6)), dot(18.5, 11.5, 2.8, alpha(c, 0.6)),
+                dot(12, 8.5, 4, c));
+    }
 
-        public void render(double t, int mode, boolean blackout) {
-            GraphicsContext gc = getGraphicsContext2D();
-            double w = getWidth(), h = getHeight();
-            if (w < 50 || h < 50) return;
-            gc.clearRect(0, 0, w, h);
-            gc.setLineDashes((double[]) null);
-            gc.setLineCap(StrokeLineCap.ROUND);
+    /** Іконка «Психологічна підтримка»: усміхнене обличчя. */
+    public static Node iconMind() {
+        Color c = Color.web("#2DD4BF");
+        javafx.scene.shape.Circle face = new javafx.scene.shape.Circle(12, 12, 10);
+        face.setFill(Color.TRANSPARENT);
+        face.setStroke(c);
+        face.setStrokeWidth(2);
+        javafx.scene.shape.Arc smile = new javafx.scene.shape.Arc(12, 12.5, 5.5, 4.8, 205, 130);
+        smile.setType(javafx.scene.shape.ArcType.OPEN);
+        smile.setFill(Color.TRANSPARENT);
+        smile.setStroke(c);
+        smile.setStrokeWidth(2);
+        smile.setStrokeLineCap(javafx.scene.shape.StrokeLineCap.ROUND);
+        return iconPane(24, 24, face, smile, dot(8.5, 9.5, 1.5, c), dot(15.5, 9.5, 1.5, c));
+    }
 
-            // зірки
-            for (int i = 0; i < 70; i++) {
-                double sx = ((i * 7919L) % 1000) / 1000.0 * w;
-                double sy = ((i * 104729L) % 1000) / 1000.0 * h;
-                double tw = 0.25 + 0.25 * Math.sin(t * 1.3 + i);
-                gc.setFill(Color.color(0.7, 0.85, 1.0, tw));
-                gc.fillOval(sx, sy, 1.5, 1.5);
-            }
+    /** Іконка «Голограма екіпажу»: шолом космонавта. */
+    public static Node iconAstronaut() {
+        javafx.scene.shape.Rectangle body = new javafx.scene.shape.Rectangle(5, 19.5, 14, 5);
+        body.setFill(Color.web("#CBD5E1"));
+        body.setArcWidth(5);
+        body.setArcHeight(5);
+        javafx.scene.shape.Circle helmet = dot(12, 11, 9.5, Color.web("#F8FAFC"));
+        javafx.scene.shape.Ellipse visor = new javafx.scene.shape.Ellipse(12, 11.5, 6.6, 5.4);
+        visor.setFill(Color.web("#4C1D95"));
+        javafx.scene.shape.Ellipse glint = new javafx.scene.shape.Ellipse(9.6, 9.6, 2.2, 1.3);
+        glint.setFill(Color.web("#C4B5FD"));
+        return iconPane(24, 26, body, helmet, visor, glint);
+    }
 
-            double ey = h * 0.62;
-            double ex = w * 0.10, mx = w * 0.90, sxp = w * 0.50;
-            double cpx = w * 0.50, cpy = h * 0.02;
-
-            // траєкторія перельоту
-            gc.setStroke(alpha(CYAN, 0.35));
-            gc.setLineWidth(1.2);
-            gc.setLineDashes(6, 6);
-            gc.beginPath();
-            gc.moveTo(ex, ey);
-            gc.quadraticCurveTo(cpx, cpy, mx, ey);
-            gc.stroke();
-            gc.setLineDashes((double[]) null);
-
-            // Сонце
-            double sunR = Math.min(w, h) * 0.075;
-            double pulse = 1 + 0.06 * Math.sin(t * 2);
-            gc.setFill(alpha(AMBER, 0.12));
-            gc.fillOval(sxp - sunR * 2.6, ey - sunR * 2.6, sunR * 5.2, sunR * 5.2);
-            gc.setFill(alpha(AMBER, 0.30));
-            gc.fillOval(sxp - sunR * 1.6 * pulse, ey - sunR * 1.6 * pulse, sunR * 3.2 * pulse, sunR * 3.2 * pulse);
-            gc.setFill(Color.web("#FBBF24"));
-            gc.fillOval(sxp - sunR, ey - sunR, sunR * 2, sunR * 2);
-
-            // Земля, орбіта Місяця, Марс
-            double earthR = 13;
-            planet(gc, ex, ey, earthR, Color.web("#38BDF8"));
-            double moonOrbit = 38;
-            gc.setStroke(alpha(Color.WHITE, 0.18));
-            gc.setLineWidth(1);
-            gc.strokeOval(ex - moonOrbit, ey - moonOrbit, moonOrbit * 2, moonOrbit * 2);
-            double ma = t * 0.6;
-            double moonX = ex + moonOrbit * Math.cos(ma), moonY = ey + moonOrbit * Math.sin(ma);
-            gc.setFill(Color.web("#CBD5E1"));
-            gc.fillOval(moonX - 4, moonY - 4, 8, 8);
-            planet(gc, mx, ey, 10, Color.web("#F97316"));
-
-            // де корабель
-            double shipX, shipY;
-            switch (mode) {
-                case 0 -> {
-                    double a = t * 1.8;
-                    shipX = ex + 24 * Math.cos(a);
-                    shipY = ey + 24 * Math.sin(a);
-                }
-                case 1 -> {
-                    shipX = moonX + 9;
-                    shipY = moonY - 9;
-                }
-                case 2 -> {
-                    double u = 0.38 + 0.03 * Math.sin(t * 0.4);
-                    shipX = quad(ex, cpx, mx, u);
-                    shipY = quad(ey, cpy, ey, u);
-                }
-                default -> {
-                    shipX = mx - 26;
-                    shipY = ey - 26;
-                }
-            }
-
-            // сигнал до Землі
-            boolean blocked = blackout || mode == 3;
-            double sigSpeed = switch (mode) {
-                case 0 -> 1.6;
-                case 1 -> 0.9;
-                case 2 -> 0.18;
-                default -> 0.18;
+    /** Намальоване обличчя настрою 1..5 (червоне = дуже погано, зелене = чудово). Видно на будь-якій системі. */
+    public static Node moodFace(int value, double k) {
+        Color[] cols = {Color.web("#F87171"), Color.web("#FB923C"), Color.web("#FACC15"),
+                Color.web("#A3E635"), Color.web("#4ADE80")};
+        Color c = cols[Math.max(0, Math.min(4, value - 1))];
+        javafx.scene.shape.Circle face = new javafx.scene.shape.Circle(12 * k, 12 * k, 10 * k);
+        face.setFill(alpha(c, 0.12));
+        face.setStroke(c);
+        face.setStrokeWidth(2 * k);
+        Node mouth;
+        if (value == 3) {
+            javafx.scene.shape.Line ln = new javafx.scene.shape.Line(8 * k, 15.5 * k, 16 * k, 15.5 * k);
+            ln.setStroke(c);
+            ln.setStrokeWidth(2 * k);
+            ln.setStrokeLineCap(javafx.scene.shape.StrokeLineCap.ROUND);
+            mouth = ln;
+        } else {
+            javafx.scene.shape.Arc a = switch (value) {
+                case 1 -> new javafx.scene.shape.Arc(12 * k, 19.5 * k, 5.5 * k, 4.5 * k, 25, 130);
+                case 2 -> new javafx.scene.shape.Arc(12 * k, 17.5 * k, 5 * k, 3 * k, 25, 130);
+                case 4 -> new javafx.scene.shape.Arc(12 * k, 12 * k, 5 * k, 3.6 * k, 205, 130);
+                default -> new javafx.scene.shape.Arc(12 * k, 11 * k, 6 * k, 5.6 * k, 200, 140);
             };
-            Color sigColor = blocked ? RED : GREEN;
-            gc.setStroke(alpha(sigColor, 0.35));
-            gc.setLineWidth(1);
-            gc.setLineDashes(3, 5);
-            double endX = blocked ? sxp + sunR : ex + earthR;
-            double endY = ey;
-            gc.strokeLine(shipX, shipY, endX, endY);
-            gc.setLineDashes((double[]) null);
-            for (int k = 0; k < 3; k++) {
-                double p = (t * sigSpeed + k / 3.0) % 1.0;
-                double px = shipX + (endX - shipX) * p;
-                double py = shipY + (endY - shipY) * p;
-                gc.setFill(alpha(sigColor, 0.25));
-                gc.fillOval(px - 6, py - 6, 12, 12);
-                gc.setFill(sigColor);
-                gc.fillOval(px - 2.5, py - 2.5, 5, 5);
-            }
-            if (blocked) {
-                gc.setStroke(RED);
-                gc.setLineWidth(2.5);
-                gc.strokeLine(sxp - 10, ey - sunR - 16, sxp + 10, ey - sunR - 36);
-                gc.strokeLine(sxp + 10, ey - sunR - 16, sxp - 10, ey - sunR - 36);
-            }
-
-            // корабель
-            gc.setFill(alpha(CYAN, 0.25));
-            gc.fillOval(shipX - 9, shipY - 9, 18, 18);
-            gc.setFill(Color.WHITE);
-            gc.fillPolygon(new double[]{shipX, shipX - 5, shipX + 5},
-                    new double[]{shipY - 6, shipY + 5, shipY + 5}, 3);
-
-            // підписи
-            gc.setFont(Font.font("Consolas", 11));
-            gc.setTextAlign(TextAlignment.CENTER);
-            gc.setFill(TEXT_DIM);
-            gc.fillText("ЗЕМЛЯ", ex, ey + earthR + 26);
-            gc.fillText("СОНЦЕ", sxp, ey + sunR * 2.6 + 12);
-            gc.fillText("МАРС", mx, ey + 26);
-            gc.setFill(Color.WHITE);
-            gc.fillText("ВИ ТУТ", shipX, shipY - 14);
-            gc.setTextAlign(TextAlignment.LEFT);
+            a.setType(value == 5 ? javafx.scene.shape.ArcType.CHORD : javafx.scene.shape.ArcType.OPEN);
+            a.setFill(value == 5 ? c : Color.TRANSPARENT);
+            a.setStroke(c);
+            a.setStrokeWidth(2 * k);
+            a.setStrokeLineCap(javafx.scene.shape.StrokeLineCap.ROUND);
+            mouth = a;
         }
-
-        private static double quad(double p0, double c, double p2, double u) {
-            double v = 1 - u;
-            return v * v * p0 + 2 * v * u * c + u * u * p2;
-        }
-
-        private static void planet(GraphicsContext gc, double x, double y, double r, Color c) {
-            gc.setFill(alpha(c, 0.15));
-            gc.fillOval(x - r * 1.9, y - r * 1.9, r * 3.8, r * 3.8);
-            gc.setFill(alpha(c, 0.9));
-            gc.fillOval(x - r, y - r, r * 2, r * 2);
-            gc.setFill(Color.color(0, 0, 0, 0.28));
-            gc.fillArc(x - r, y - r, r * 2, r * 2, -60, 180, ArcType.CHORD);
-        }
+        return new javafx.scene.Group(iconPane(24 * k, 24 * k, face, mouth,
+                dot(8.5 * k, 9.5 * k, 1.6 * k, c), dot(15.5 * k, 9.5 * k, 1.6 * k, c)));
     }
 
     // ============ КОРИСНЕ ============

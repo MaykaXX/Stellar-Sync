@@ -16,7 +16,7 @@ import java.util.List;
 
 /**
  * Екран «Ризики і джерела»: наукова основа застосунку (NASA HRP, CSA) і те, де кожен ризик
- * відображено в AEGIS-BIO. Дані лежать у SpaceSources.
+ * відображено в VITAL. Дані лежать у SpaceSources.
  */
 public final class SourcesPanel extends VBox {
 
@@ -30,13 +30,13 @@ public final class SourcesPanel extends VBox {
     // ============ БЛОКИ ============
     private VBox introBlock() {
         Label note = text("Тут зібрано, на що спирається застосунок: п'ять небезпек польоту за класифікацією "
-                + "Програми досліджень людини NASA, конкретні ризики для здоров'я та місця, де вони видно в AEGIS-BIO. "
+                + "Програми досліджень людини NASA, конкретні ризики для здоров'я та місця, де вони видно в VITAL. "
                 + "Пояснення викладені своїми словами, повні тексти за посиланнями.", "#94A3B8", 12);
         Label disclaimer = text("Важливо: порогові значення показників у застосунку демонстраційні, а не нормативи NASA. "
                 + "NASA та CSA не пов'язані з цим проєктом і його не схвалювали.", "#FCD34D", 11);
-        return HoloUi.block("📚", "Ризики і джерела", "Наукова основа AEGIS-BIO",
+        return HoloUi.block("📚", "Ризики і джерела", "Наукова основа VITAL",
                 "Кожен показник застосунку пов'язаний із реальним ризиком польоту. "
-                        + "Біля показників на екрані «Показники» є значок 📎 із посиланням на джерело.",
+                        + "Біля показників на екрані «Стан і дії» є значок 📎 із посиланням на джерело.",
                 note, disclaimer);
     }
 
@@ -56,7 +56,7 @@ public final class SourcesPanel extends VBox {
                 {SpaceSources.GROUP_RADIATION, "☢️"}};
         for (String[] g : groups) {
             Label head = new Label(g[1] + "  " + g[0]);
-            head.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 12px; -fx-font-weight: bold;");
+            head.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 24px; -fx-font-weight: bold;");
             FlowPane flow = new FlowPane(12, 12);
             for (SpaceSources.Risk r : SpaceSources.RISKS) {
                 if (r.group().equals(g[0])) flow.getChildren().add(riskCard(r));
@@ -86,7 +86,7 @@ public final class SourcesPanel extends VBox {
                 + "Канада розвиває компактний автономний прилад CANS, який вимірює їх безперервно. "
                 + "Дані можуть знадобитися і на Землі: для променевої терапії та захисту екіпажів літаків.", "#94A3B8", 12);
         Label caveat = text("Це цифри для МКС. У польоті до Марса частка може бути іншою, тому застосунок "
-                + "показує дозу однією цифрою і розбивку не моделює.", "#64748B", 11);
+                + "показує дозу однією цифрою і розбивку не моделює.", "#A3B1C6", 11);
         return HoloUi.block("☢️", "Радіація: звідки вона береться", "Факти Канадського космічного агентства (CSA)",
                 null, bar, info, caveat, SourceLinks.row("Джерело:", SpaceSources.CSA_RADIATION));
     }
@@ -122,13 +122,13 @@ public final class SourcesPanel extends VBox {
         List<SpaceSources.Link> links = SpaceSources.mainSources();
         for (int i = 0; i < links.size(); i++) {
             Label d = new Label("  " + descs[Math.min(i, descs.length - 1)]);
-            d.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
+            d.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 22px;");
             HBox row = new HBox(6, SourceLinks.link(links.get(i)), d);
             row.setAlignment(Pos.CENTER_LEFT);
             list.getChildren().add(row);
         }
         Label foot = text("Сторінки окремих ризиків і досліджень відкриваються з посилань вище та з карток цього екрана.",
-                "#64748B", 11);
+                "#A3B1C6", 11);
         return HoloUi.block("🔗", "Усі джерела", "Основні сторінки, звідки взято матеріал", null, list, foot);
     }
 
@@ -139,7 +139,7 @@ public final class SourcesPanel extends VBox {
         badge.setMinSize(32, 32);
         badge.setAlignment(Pos.CENTER);
         badge.setStyle("-fx-background-color: " + HoloUi.rgba(c, 0.20) + "; -fx-text-fill: " + HoloUi.hex(c)
-                + "; -fx-font-size: 16px; -fx-font-weight: bold; -fx-background-radius: 8; "
+                + "; -fx-font-size: 32px; -fx-font-weight: bold; -fx-background-radius: 8; "
                 + "-fx-border-color: " + HoloUi.hex(c) + "; -fx-border-radius: 8;");
         Label name = text(h.name(), "#F1F5F9", 13);
         name.setStyle(name.getStyle() + " -fx-font-weight: bold;");
@@ -205,7 +205,7 @@ public final class SourcesPanel extends VBox {
         l.setMinHeight(34);
         l.setAlignment(Pos.CENTER);
         l.setStyle("-fx-background-color: " + HoloUi.rgba(c, 0.28) + "; -fx-text-fill: " + HoloUi.hex(c)
-                + "; -fx-font-size: 12px; -fx-font-weight: bold; -fx-border-color: " + HoloUi.hex(c) + ";");
+                + "; -fx-font-size: 24px; -fx-font-weight: bold; -fx-border-color: " + HoloUi.hex(c) + ";");
         return l;
     }
 
@@ -223,7 +223,7 @@ public final class SourcesPanel extends VBox {
         Label l = new Label(s);
         l.setWrapText(true);
         l.setMaxWidth(Double.MAX_VALUE);
-        l.setStyle("-fx-text-fill: " + color + "; -fx-font-size: " + size + "px;");
+        l.setStyle("-fx-text-fill: " + color + "; -fx-font-size: " + (size * 2) + "px;");
         return l;
     }
 }

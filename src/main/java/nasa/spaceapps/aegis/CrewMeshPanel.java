@@ -72,22 +72,22 @@ public final class CrewMeshPanel extends VBox {
 
     // ============ ПОБУДОВА ============
     private VBox buildMapBlock() {
-        Label hint = new Label("Пристрої екіпажу з'єднані напряму (Bluetooth LE / UWB), без центрального сервера. "
+        Label hint = new Label("Пристрої екіпажу з'єднані напряму (Bluetooth), без центрального сервера. "
                 + "Кожен стежить за сусідами, а при небезпеці розсилає їм зашифрований сигнал.");
         hint.setWrapText(true);
-        hint.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
+        hint.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 22px;");
 
         onlineChip.setMinWidth(Region.USE_PREF_SIZE);
         sosChip.setMinWidth(Region.USE_PREF_SIZE);
         Label crypto = HoloUi.chip("🔐 AES-256-GCM", HoloUi.PURPLE);
 
         CheckBox fast = new CheckBox("Швидкий демо-таймер (15 с замість 60 с)");
-        fast.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
+        fast.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 22px;");
         fast.setOnAction(e -> net.setConfirmWindow(fast.isSelected() ? 15 : 60));
 
         ToggleButton sound = new ToggleButton("🔊 Звук");
         sound.setSelected(true);
-        sound.setStyle("-fx-font-size: 11px; -fx-cursor: hand;");
+        sound.setStyle("-fx-font-size: 22px; -fx-cursor: hand;");
         sound.setOnAction(e -> {
             MeshSound.setMuted(!sound.isSelected());
             sound.setText(sound.isSelected() ? "🔊 Звук" : "🔇 Без звуку");
@@ -154,7 +154,7 @@ public final class CrewMeshPanel extends VBox {
             cards.add(c);
             list.getChildren().add(c);
         }
-        return HoloUi.block("👥", "Екіпаж на зв'язку", "Пульс, HRV, гідратація та Buddy-Guard оновлюються наживо",
+        return HoloUi.block(HoloUi.iconTeam(), "Екіпаж на зв'язку", "Пульс, стрес-баланс, вода та взаємний захист оновлюються наживо",
                 "Buddy-Guard: якщо показники критичні й член екіпажу не підтвердив «Усе гаразд» "
                         + "за 60 секунд, його пристрій автономно розсилає аварійний пакет усім іншим.", list);
     }
@@ -171,7 +171,7 @@ public final class CrewMeshPanel extends VBox {
         Label l = new Label(LocalTime.now().format(TIME) + "  " + e.text());
         l.setWrapText(true);
         l.setMaxWidth(Double.MAX_VALUE);
-        l.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 11px;");
+        l.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 22px;");
         logBox.getChildren().add(0, l);
         while (logBox.getChildren().size() > LOG_LIMIT) {
             logBox.getChildren().remove(logBox.getChildren().size() - 1);

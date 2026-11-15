@@ -102,7 +102,7 @@ public final class CrewCardComponent extends VBox {
             avatarNode = iv;
         } else {
             Label emoji = new Label("👨‍🚀");
-            emoji.setStyle("-fx-font-size: 26px;");
+            emoji.setStyle("-fx-font-size: 52px;");
             avatarNode = emoji;
         }
         statusDot.setStroke(Color.web("#0B1322"));
@@ -111,10 +111,10 @@ public final class CrewCardComponent extends VBox {
         avatarPane.getChildren().addAll(avatarNode, statusDot);
 
         Label nameLabel = new Label(m.getName() + (m.isLocal() ? "  · це ваш пристрій" : ""));
-        nameLabel.setStyle("-fx-text-fill: #F1F5F9; -fx-font-weight: bold; -fx-font-size: 14px;");
+        nameLabel.setStyle("-fx-text-fill: #F1F5F9; -fx-font-weight: bold; -fx-font-size: 28px;");
         Label roleLabel = new Label(m.getRole() + "  ·  " + m.getId());
-        roleLabel.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
-        subLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
+        roleLabel.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 22px;");
+        subLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 22px;");
         VBox info = new VBox(2, nameLabel, roleLabel, subLabel);
         HBox.setHgrow(info, Priority.ALWAYS);
 
@@ -140,7 +140,7 @@ public final class CrewCardComponent extends VBox {
     private Node buildMetrics() {
         VBox tiles = new VBox(6,
                 tile("❤", "Пульс", hrVal),
-                tile("📊", "HRV (стрес)", hrvVal),
+                tile("📊", "Стрес-баланс", hrvVal),
                 tile("💧", "Гідратація", hydVal));
         tiles.setMinWidth(190);
         tiles.setPrefWidth(190);
@@ -159,11 +159,11 @@ public final class CrewCardComponent extends VBox {
     private HBox tile(String icon, String caption, Label value) {
         Label ic = new Label(icon);
         ic.setMinWidth(22);
-        ic.setStyle("-fx-font-size: 14px;");
+        ic.setStyle("-fx-font-size: 28px;");
         Label cap = new Label(caption);
-        cap.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
+        cap.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 22px;");
         cap.setMinWidth(78);
-        value.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 13px; -fx-font-weight: bold; -fx-font-family: 'Consolas', monospace;");
+        value.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 26px; -fx-font-weight: bold; -fx-font-family: 'Consolas', monospace;");
         HBox r = new HBox(6, ic, cap, value);
         r.setAlignment(Pos.CENTER_LEFT);
         return r;
@@ -172,7 +172,7 @@ public final class CrewCardComponent extends VBox {
     private Node buildOkStrip() {
         okText.setWrapText(true);
         okText.setMaxWidth(Double.MAX_VALUE);
-        okText.setStyle("-fx-text-fill: #6EE7B7; -fx-font-weight: bold; -fx-font-size: 12px;");
+        okText.setStyle("-fx-text-fill: #6EE7B7; -fx-font-weight: bold; -fx-font-size: 24px;");
         okStrip.setAlignment(Pos.CENTER_LEFT);
         okStrip.setPadding(new Insets(9, 12, 9, 12));
         okStrip.setStyle("-fx-background-color: rgba(6,95,70,0.40); -fx-border-color: #10B981; "
@@ -199,7 +199,7 @@ public final class CrewCardComponent extends VBox {
 
     private Node buildTimerStrip() {
         timerText.setWrapText(true);
-        timerText.setStyle("-fx-text-fill: #FDBA74; -fx-font-weight: bold; -fx-font-size: 12px;");
+        timerText.setStyle("-fx-text-fill: #FDBA74; -fx-font-weight: bold; -fx-font-size: 24px;");
         timerBar.setPrefWidth(150);
         timerBar.setMinWidth(110);
         timerText.setMaxWidth(Double.MAX_VALUE);
@@ -214,7 +214,7 @@ public final class CrewCardComponent extends VBox {
 
     private Node buildSosStrip() {
         sosText.setWrapText(true);
-        sosText.setStyle("-fx-text-fill: #FCA5A5; -fx-font-weight: bold; -fx-font-size: 12px;");
+        sosText.setStyle("-fx-text-fill: #FCA5A5; -fx-font-weight: bold; -fx-font-size: 24px;");
         sosText.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(sosText, Priority.ALWAYS);
         styleButton(cancelBtn, "#7F1D1D", "#F87171");
@@ -229,11 +229,11 @@ public final class CrewCardComponent extends VBox {
 
     private Node buildRxStrip() {
         rxText.setWrapText(true);
-        rxText.setStyle("-fx-text-fill: #FDE68A; -fx-font-weight: bold; -fx-font-size: 12px;");
+        rxText.setStyle("-fx-text-fill: #FDE68A; -fx-font-weight: bold; -fx-font-size: 24px;");
         rxText.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(rxText, Priority.ALWAYS);
         styleButton(goBtn, "#B45309", "#FBBF24");
-        styleButton(muteBtn, "#1E293B", "#64748B");
+        styleButton(muteBtn, "#1E293B", "#A3B1C6");
         styleButton(doneBtn, "#059669", "#34D399");
         doneBtn.setText("✅ Відбій");
         rxStrip.setAlignment(Pos.CENTER_LEFT);
@@ -287,7 +287,7 @@ public final class CrewCardComponent extends VBox {
 
     private static void styleButton(Button b, String bg, String border) {
         b.setStyle("-fx-background-color: " + bg + "; -fx-text-fill: white; -fx-font-weight: bold; "
-                + "-fx-font-size: 11px; -fx-cursor: hand; -fx-padding: 5 10; "
+                + "-fx-font-size: 22px; -fx-cursor: hand; -fx-padding: 5 10; "
                 + "-fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: " + border + ";");
     }
 
@@ -310,7 +310,7 @@ public final class CrewCardComponent extends VBox {
         // ЕКГ біжить завжди, малюється лише коли екран видно
         ecg.setAccent(st == CrewMemberState.CrewStatus.NOMINAL ? null
                 : st == CrewMemberState.CrewStatus.WARNING ? Color.web("#F59E0B")
-                : st == CrewMemberState.CrewStatus.OFFLINE ? Color.web("#64748B")
+                : st == CrewMemberState.CrewStatus.OFFLINE ? Color.web("#A3B1C6")
                 : Color.web("#EF4444"));
         renderToggle = !renderToggle;
         ecg.update(dt, m.getHr(), st != CrewMemberState.CrewStatus.NOMINAL, visible && renderToggle);
@@ -381,7 +381,7 @@ public final class CrewCardComponent extends VBox {
         // статус
         String chipText = "● " + st.label;
         String chipStyle = "-fx-background-color: " + HoloUi.rgba(sc, 0.16) + "; -fx-text-fill: " + st.hex
-                + "; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 3 10 3 10; "
+                + "; -fx-font-size: 22px; -fx-font-weight: bold; -fx-padding: 3 10 3 10; "
                 + "-fx-background-radius: 10; -fx-border-radius: 10; -fx-border-color: " + st.hex + ";";
         statusChip.setText(chipText);
         if (!chipStyle.equals(lastChipStyle)) {
@@ -398,13 +398,13 @@ public final class CrewCardComponent extends VBox {
         linkBtn.setText(m.isLinkUp() ? "📡 Зв'язок: ВКЛ" : "📡 Зв'язок: ВИКЛ");
         sosBtn.setText(m.isSosActive() ? "🚨 SOS АКТИВНИЙ" : "🚨 Маячок SOS");
         sosBtn.setStyle("-fx-background-color: " + (m.isSosActive() ? "#B91C1C" : "#1E293B") + "; -fx-text-fill: white; "
-                + "-fx-font-weight: bold; -fx-font-size: 11px; -fx-cursor: hand; -fx-padding: 5 10; "
+                + "-fx-font-weight: bold; -fx-font-size: 22px; -fx-cursor: hand; -fx-padding: 5 10; "
                 + "-fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #EF4444;");
 
         // смуга: таймер підтвердження
         show(timerStrip, timer);
         if (timer) {
-            timerText.setText("⚠️ Аномалія: " + m.getAnomalyText() + ". Авто-SOS через "
+            timerText.setText("⚠️ Аномалія: " + m.getAnomalyText() + ". Автоматичний SOS через "
                     + (int) Math.ceil(remain) + " с, якщо не підтвердити");
         }
 
@@ -413,7 +413,7 @@ public final class CrewCardComponent extends VBox {
         if (m.isSosActive()) {
             int total = net.members().size() - 1;
             StringBuilder sb = new StringBuilder(m.isAutoSos()
-                    ? "🚨 АВТО-SOS: підтвердження не надійшло. " : "🚨 Ручний SOS-маячок. ");
+                    ? "🚨 АВТОМАТИЧНИЙ SOS: підтвердження не надійшло. " : "🚨 Ручний SOS-маячок. ");
             sb.append("Крипто-пакет (AES-256-GCM) отримали ").append(net.deliveredCount(m)).append(" з ")
                     .append(total).append(" пристроїв.");
             List<CrewMeshNetwork.Helper> helpers = net.helpersOf(m);
@@ -436,7 +436,7 @@ public final class CrewCardComponent extends VBox {
                 lastRxStyle = rs;
                 rxStrip.setStyle(rs);
                 rxText.setStyle("-fx-text-fill: " + (rx.handled ? "#6EE7B7" : "#FDE68A")
-                        + "; -fx-font-weight: bold; -fx-font-size: 12px;");
+                        + "; -fx-font-weight: bold; -fx-font-size: 24px;");
             }
             int more = m.getAlerts().size() - 1;
             String head = rx.handled
@@ -458,7 +458,7 @@ public final class CrewCardComponent extends VBox {
 
     private static String valueStyle(boolean warn, boolean crit) {
         String c = crit ? "#F87171" : warn ? "#FBBF24" : "#E2E8F0";
-        return "-fx-text-fill: " + c + "; -fx-font-size: 13px; -fx-font-weight: bold; -fx-font-family: 'Consolas', monospace;";
+        return "-fx-text-fill: " + c + "; -fx-font-size: 26px; -fx-font-weight: bold; -fx-font-family: 'Consolas', monospace;";
     }
 
     private CrewMemberState.IncomingAlert firstAlert() {

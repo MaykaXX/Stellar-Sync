@@ -178,6 +178,11 @@ public final class CrewMeshPanel extends VBox {
         }
     }
 
+    /** Доступ до мережі (потрібен для глобальної плашки тривоги в головному вікні). */
+    public CrewMeshNetwork network() {
+        return net;
+    }
+
     /** Піднімає ручний SOS Командира (наприклад, із вікна MindCare). */
     public void raiseCommanderSos() {
         net.setManualSos(net.local(), true);

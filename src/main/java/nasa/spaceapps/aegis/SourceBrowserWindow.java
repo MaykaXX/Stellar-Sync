@@ -54,7 +54,7 @@ public final class SourceBrowserWindow {
     private SourceBrowserWindow(Window owner, Consumer<String> openExternally) {
         this.openExternally = openExternally;
         if (owner != null) stage.initOwner(owner);
-        stage.setTitle("AEGIS-BIO: джерела");
+        stage.setTitle("VITAL: джерела");
         stage.setWidth(1100);
         stage.setHeight(760);
 
@@ -86,7 +86,7 @@ public final class SourceBrowserWindow {
         reload.setOnAction(e -> engine.reload());
 
         Label address = new Label();
-        address.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 12px;");
+        address.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 24px;");
         address.textProperty().bind(engine.locationProperty());
         address.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(address, Priority.ALWAYS);
@@ -115,7 +115,7 @@ public final class SourceBrowserWindow {
 
         errorText.setWrapText(true);
         errorText.setMaxWidth(520);
-        errorText.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 14px;");
+        errorText.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 28px;");
         Button retry = new Button("Спробувати ще раз");
         retry.setStyle(BTN);
         retry.setOnAction(e -> engine.load(requestedUrl));
@@ -128,7 +128,7 @@ public final class SourceBrowserWindow {
         errorBox.setAlignment(Pos.CENTER);
         errorBox.setStyle("-fx-background-color: #060A12;");
         errorBox.setVisible(false);
-        errorBox.getChildren().get(0).setStyle("-fx-font-size: 36px;");
+        errorBox.getChildren().get(0).setStyle("-fx-font-size: 72px;");
 
         engine.getLoadWorker().stateProperty().addListener((obs, old, state) -> {
             if (state == Worker.State.FAILED) {
@@ -141,7 +141,7 @@ public final class SourceBrowserWindow {
             }
         });
         engine.titleProperty().addListener((obs, old, t) -> {
-            if (t != null && !t.isBlank()) stage.setTitle("AEGIS-BIO: " + t);
+            if (t != null && !t.isBlank()) stage.setTitle("VITAL: " + t);
         });
 
         StackPane center = new StackPane(view, errorBox);

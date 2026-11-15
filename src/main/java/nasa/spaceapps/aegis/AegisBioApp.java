@@ -8,23 +8,14 @@ import javafx.application.Application;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.Scene;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import javafx.scene.paint.CycleMethod;
-import javafx.scene.paint.LinearGradient;
-import javafx.scene.paint.RadialGradient;
-import javafx.scene.paint.Stop;
-import javafx.scene.shape.ArcType;
-import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
@@ -41,9 +32,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
- * Aegis-Bio: помічник здоров'я екіпажу в далекому космосі.
- * Усі дії космонавта (тренування, вода, сон, їжа...) змінюють показники,
- * а програма показує, ЩО саме змінилось і ЧОМУ.
+ * VITAL: помічник здоров'я екіпажу в далекому космосі.
+ * Показники змінюються лише після дії, яку космонавт справді виконав: розпочати, дочекатися повної
+ * тривалості, підтвердити. Журнал виконання (ActivityJournal) фіксує підтверджені, перервані дії,
+ * серії швидких натискань і довгі періоди без дій. Програма показує, ЩО змінилось і ЧОМУ.
  * Модель спрощена і призначена для демонстрації, це не медичний прилад.
  */
 public class AegisBioApp extends Application {
@@ -56,7 +48,7 @@ public class AegisBioApp extends Application {
         LEO("Навколоземна орбіта (МКС)", 0.05),
         MOON("Місячна станція Gateway", 1.3),
         MARS_TRANSIT("Політ до Марса", 840.0),
-        SOLAR_CONJUNCTION("⚠️ Сонячне з'єднання (Blackout 0 bps)", Double.POSITIVE_INFINITY);
+        SOLAR_CONJUNCTION("⚠️ Сонце блокує зв'язок (зв'язку із Землею немає)", Double.POSITIVE_INFINITY);
 
         final String label;
         final double latencySec;
@@ -75,7 +67,7 @@ public class AegisBioApp extends Application {
     private Label createBlackoutItem(String text) {
         Label l = new Label(text);
         l.setWrapText(true);
-        l.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 11px;");
+        l.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 22px;");
         return l;
     }
 
@@ -132,9 +124,6 @@ public class AegisBioApp extends Application {
     private static final DateTimeFormatter LOG_TIME =
             DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.of("UTC"));
 
-    /** Логічний розмір малюнка космонавта; на екрані він масштабується під доступне місце. */
-    private static final double BODY_W = 640, BODY_H = 480;
-
     private MissionLocation currentLocation = MissionLocation.MARS_TRANSIT;
 
     /** Постійний стан організму. */
@@ -154,7 +143,6 @@ public class AegisBioApp extends Application {
     // Інтерфейс
     private final Map<MetricType, Label> valueLabels = new EnumMap<>(MetricType.class);
     private final Map<MetricType, Label> deltaLabels = new EnumMap<>(MetricType.class);
-    private final Map<MetricType, ProgressBar> progressBars = new EnumMap<>(MetricType.class);
     private final VBox protocolContainer = new VBox(8);
     private final Label latencyNoticeLabel = new Label();
     private final Label clockLabel = new Label();
@@ -166,33 +154,24 @@ public class AegisBioApp extends Application {
     private final VBox effectsBox = new VBox(6);
     private final VBox logBox = new VBox(3);
     private final List<String> logLines = new ArrayList<>();
-    private final Button autoPlanBtn = new Button();
-    private Canvas bodyHudCanvas;
 
-    // Нові візуальні елементи
-    private final Map<MetricType, HoloUi.RingGauge> gauges = new EnumMap<>(MetricType.class);
+    // Таблиця показників і лічильники в меню
     private final Map<MetricType, Label> chips = new EnumMap<>(MetricType.class);
-    private final Map<String, Button> quickButtons = new HashMap<>();
-    private final Map<Screen, Label> navBadges = new EnumMap<>(Screen.class);
-    private HoloUi.RingGauge healthGauge;
-    private HoloUi.DnaHelix dnaHelix;
-    private HoloUi.OrbitMap orbitMap;
-    private final Label healthVerdictLabel = new Label();
-    private final Label healthExplainLabel = new Label();
-    private final Label assistantText = new Label();
-    private final Label assistantFace = new Label("🧑‍🚀");
-    private final VBox assistantBox = new VBox(8);
-    private int healthScoreValue = 100;
-    private final Tooltip bodyTip = new Tooltip();
-    private double bodyScale = 1, bodyOffX = 0, bodyOffY = 0;
-    private Hot hoverHot;
 
-    /** Світна точка на голограмі: де вона і що про неї розповісти. */
-    private record Hot(double x, double y, String title, String text) {}
+    // Журнал виконання: що космонавт справді робив
+    private final ActivityJournal journal = new ActivityJournal();
+    private final Label sessionIdle = new Label();
+    private final Label sessionTitle = new Label();
+    private final Label sessionTime = new Label();
+    private final ProgressBar sessionBar = new ProgressBar(0);
+    private final Button confirmBtn = new Button("✔ Підтвердити виконання");
+    private final Button abortBtn = new Button("✖ Скасувати");
+    private final VBox sessionActive = new VBox(6);
+    private final FlowPane journalChips = new FlowPane(8, 8);
+    private final Label journalVerdict = new Label();
+    private final VBox journalRows = new VBox(6);
 
     // Анімація
-    private double animationPulse = 0;
-    private double heartPhase = 0;
     private long lastNanos = 0;
     private int simSpeed = 1;
 
@@ -230,42 +209,36 @@ public class AegisBioApp extends Application {
         mainStage = primaryStage;
         SourceLinks.init(getHostServices(), primaryStage);
         initDefaultTelemetry();
+        journal.setListener(this::onJournalEntry);
 
         BorderPane root = new BorderPane();
         root.setStyle("-fx-background-color: linear-gradient(to bottom right, #060A12, #0A1424); "
                 + "-fx-font-family: 'Segoe UI', system-ui, sans-serif;");
 
         root.setTop(buildTopHeader(primaryStage));
-        root.setLeft(buildNavBar());
         root.setCenter(buildMainDashboard());
         root.setBottom(buildBottomStatusBar());
+        showScreen(Screen.MENU);
 
-        // Анімація тіла: серце б'ється з реальною частотою пульсу
+        // Mesh екіпажу живе завжди (таймери, пакети), малюється лише на своєму екрані
         AnimationTimer timer = new AnimationTimer() {
             @Override
             public void handle(long now) {
                 if (lastNanos == 0) lastNanos = now;
                 double dt = (now - lastNanos) / 1_000_000_000.0;
                 lastNanos = now;
-                animationPulse += dt * 3;
-                double hr = currentTelemetry.get(MetricType.HEART_RATE);
-                heartPhase += dt * (hr / 60.0) * 2 * Math.PI;
-                boolean onHome = currentScreen == Screen.HOME;
-                if (onHome) drawHolographicBody(bodyHudCanvas.getGraphicsContext2D());
-                if (heartMonitor != null) {
-                    boolean hw = hr > 100 || hr < 55 || currentTelemetry.get(MetricType.HRV) < 40;
-                    heartMonitor.update(dt, hr, hw, onHome);
-                }
-                // Mesh екіпажу живе завжди (таймери, пакети), малюється лише на своєму екрані
                 if (crewPanel != null) crewPanel.frame(dt, currentScreen == Screen.MESH_CREW);
-                double tSec = animationPulse / 3.0;
-                if (currentScreen == Screen.METRICS && dnaHelix != null) {
-                    double risk = Math.min(1.0, currentTelemetry.get(MetricType.RADIATION_DOSE) / 300.0);
-                    dnaHelix.render(tSec, risk, HoloUi.CYAN);
-                }
-                if (currentScreen == Screen.MISSION && orbitMap != null) {
-                    int mode = blackoutActive ? 3 : currentLocation.ordinal();
-                    orbitMap.render(tSec, mode, blackoutActive);
+                if (currentScreen == Screen.MENU && orbitMenu != null) {
+                    orbitMenu.frame(dt);
+                } else if (currentScreen == Screen.MISSION && missionMap != null) {
+                    missionMap.frame(dt);
+                } else if (currentScreen == Screen.BODY && bodyAstronaut != null) {
+                    bodyAstronaut.frame(dt);
+                    if (heartMonitor != null) {
+                        double hr = currentTelemetry.get(MetricType.HEART_RATE);
+                        boolean warn = hr > 100 || hr < 55 || currentTelemetry.get(MetricType.HRV) < 40;
+                        heartMonitor.update(dt, hr, warn, true);
+                    }
                 }
             }
         };
@@ -282,8 +255,17 @@ public class AegisBioApp extends Application {
         physiologyTimeline.setCycleCount(Timeline.INDEFINITE);
         physiologyTimeline.play();
 
-        Scene scene = new Scene(root, 1366, 820);
-        primaryStage.setTitle("Aegis-Bio: помічник здоров'я екіпажу в далекому космосі");
+        // Розмір вікна підлаштовується під екран (стандартний ПК, ноутбук, планшет)
+        javafx.geometry.Rectangle2D vb = javafx.stage.Screen.getPrimary().getVisualBounds();
+        Scene scene = new Scene(root, Math.min(1366, vb.getWidth()), Math.min(820, vb.getHeight()));
+        scene.setOnKeyPressed(e -> {
+            if (e.getCode() == javafx.scene.input.KeyCode.ESCAPE && currentScreen != Screen.MENU) {
+                showScreen(Screen.MENU);
+            }
+        });
+        primaryStage.setMinWidth(Math.min(900, vb.getWidth()));
+        primaryStage.setMinHeight(Math.min(600, vb.getHeight()));
+        primaryStage.setTitle("VITAL: помічник здоров'я екіпажу в далекому космосі");
         primaryStage.setScene(scene);
         primaryStage.show();
     }
@@ -317,11 +299,15 @@ public class AegisBioApp extends Application {
         simMinutes = 0;
         clockSec = 0;
         stressEngine.reset();
+        journal.reset();
         if (blackoutActive) abortBlackoutSilently();
         showEffectsPlaceholder();
         updateHabitViews();
         updateAllTelemetryViews();
         updateTrendChart();
+        updateSessionView();
+        refreshJournalView();
+        renderActiveProtocols();
     }
 
     // ============ ФІЗІОЛОГІЯ ============
@@ -414,8 +400,7 @@ public class AegisBioApp extends Application {
     );
 
     private Stage blackoutStage;
-    private ComboBox<MissionLocation> locationBox;
-    private boolean syncingLocation = false;
+    private ChoiceBar<MissionLocation> locationBar;
     private final Label blackoutStatusLabel = new Label();
 
     private boolean blackoutActive = false;
@@ -446,17 +431,10 @@ public class AegisBioApp extends Application {
         return (int) Math.max(0, elapsed / 60);
     }
 
-    /** Змінює поточну локацію і синхронізує випадаючий список (без повторного запуску його обробника). */
+    /** Змінює поточну локацію і синхронізує кнопки вибору (без повторного запуску їх обробника). */
     private void setLocationSilently(MissionLocation loc) {
         currentLocation = loc;
-        if (locationBox != null && locationBox.getValue() != loc) {
-            syncingLocation = true;
-            try {
-                locationBox.setValue(loc);
-            } finally {
-                syncingLocation = false;
-            }
-        }
+        if (locationBar != null) locationBar.setValue(loc);
         updateLatencyDisplay();
     }
 
@@ -479,7 +457,7 @@ public class AegisBioApp extends Application {
 
         setLocationSilently(MissionLocation.SOLAR_CONJUNCTION);
         addLog("📡❌ [Блекаут] Зв'язок із Землею втрачено на " + formatDuration(duration).replaceAll("\\s+", " ")
-                + ". Керування перейшло до AI-автопілота.");
+                + ". Керування перейшло до автопілота.");
         updateBlackoutStatus();
     }
 
@@ -500,7 +478,7 @@ public class AegisBioApp extends Application {
         updateBlackoutStatus();
 
         String summary = String.format(Locale.US,
-                "Тривалість блекауту: %s%nПакетів телеметрії передано: %d (~%d КБ)%nДій AI-автопілота: %d%n"
+                "Тривалість блекауту: %s%nПакетів телеметрії передано: %d (~%d КБ)%nДій автопілота: %d%n"
                         + "Дозу радіації знижено щитами: %.2f мЗв",
                 formatDuration(elapsed).replaceAll("\\s+", " "), packets, packets * PACKET_KB, actions, rad);
         Alert alert = new Alert(Alert.AlertType.INFORMATION, summary, ButtonType.OK);
@@ -522,9 +500,9 @@ public class AegisBioApp extends Application {
         blackoutStatusLabel.setVisible(on);
         blackoutStatusLabel.setManaged(on);
         if (on) {
-            blackoutStatusLabel.setText("📡❌ БЛЕКАУТ: до відновлення зв'язку "
+            blackoutStatusLabel.setText("📡❌ НЕМАЄ ЗВ'ЯЗКУ: до відновлення "
                     + formatDuration(blackoutRemainingSec()).replaceAll("\\s+", " ")
-                    + "  |  Дій AI: " + blackoutAiActions);
+                    + "  |  Дій автопілота: " + blackoutAiActions);
         }
     }
 
@@ -544,7 +522,7 @@ public class AegisBioApp extends Application {
             lastBlackoutReportHour = hour;
             if (hour % 6 == 0) {
                 addLog("🛰️ [Блекаут] Минуло " + hour + " год. У локальному буфері пакетів: " + blackoutPackets()
-                        + ", дій AI: " + blackoutAiActions + ".");
+                        + ", дій автопілота: " + blackoutAiActions + ".");
             }
         }
         updateBlackoutStatus();
@@ -578,9 +556,10 @@ public class AegisBioApp extends Application {
             lastAutoActionClock.put(r.actionId(), clockSec);
             applyActivity(a, true);
             blackoutAiActions++;
+            journal.addAuto(a.logText(), "Автопілот (ШІ): " + r.reason() + ". Це не дія космонавта.", clockSec);
 
             String msg = a.logText() + " (" + r.reason() + ")";
-            addLog("🤖 [AI-автопілот] " + msg + ".");
+            addLog("🤖 [Автопілот] " + msg + ".");
             autopilotRecent.addFirst("[" + LOG_TIME.format(missionNow()) + "] " + msg);
             while (autopilotRecent.size() > 5) autopilotRecent.removeLast();
             break; // за одне сканування — одна дія
@@ -609,39 +588,42 @@ public class AegisBioApp extends Application {
         updateTrendChart();
         updateClock();
         updateStress();
+        boolean actionNeeded = activeProtocols.stream()
+                .anyMatch(p -> !"NOMINAL".equals(p.urgency()) && !"FORECAST".equals(p.urgency()));
+        journal.checkInactivity(clockSec, actionNeeded && !blackoutActive);
+        updateSessionView();
     }
 
-    // ============ AEGIS MINDCARE ============
+    // ============ VITAL MINDCARE ============
     private void updateStress() {
         stressEngine.update(new StressEngine.Reading(
                 currentTelemetry.get(MetricType.HEART_RATE),
                 currentTelemetry.get(MetricType.HRV),
                 currentTelemetry.get(MetricType.HYDRATION),
                 sleepHours), clockSec);
+        updateMenuStates();
         if (stressEngine.shouldAlertCritical(clockSec)) {
-            addLog("🧠 [MindCare] Стрес критичний і не минає. Відкриваю вікно психологічної підтримки.");
+            addLog("🧠 [MindCare] Стрес критичний і не минає. Відкриваю вкладку психологічної підтримки.");
             openMindCare();
         }
     }
 
     private void openMindCare() {
-        Stage owner = (blackoutStage != null && blackoutStage.isShowing()) ? blackoutStage : mainStage;
-        MindCareWindow.open(owner, new MindCareWindow.Hooks(
-                stressEngine,
-                () -> clockSec,
-                this::addLog,
-                this::onMindCareBreathingDone,
-                this::onMindCareSos));
+        showScreen(Screen.MINDCARE);
+        if (blackoutStage != null && blackoutStage.isShowing() && mainStage != null) mainStage.toFront();
     }
 
     private void onMindCareBreathingDone() {
         Activity breath = findActivity("BREATH");
-        if (breath != null && blockedReason(breath) == null) applyActivity(breath, true);
+        if (breath != null && blockedReason(breath) == null) {
+            applyActivity(breath, true);
+            journal.addAuto(breath.logText(), "Повну вправу виконано у вкладці MindCare.", clockSec);
+        }
     }
 
     private void onMindCareSos() {
         if (crewPanel != null) crewPanel.raiseCommanderSos();
-        addLog("🆘 [MindCare] SOS Mental Alert надіслано в ЦУП та екіпажу.");
+        addLog("🆘 [Психологічна підтримка] Сигнал SOS надіслано в центр керування на Землі та екіпажу.");
     }
 
     /** Записує поточні показники в історію (для графіка і прогнозу). */
@@ -658,7 +640,7 @@ public class AegisBioApp extends Application {
     private List<Activity> buildActivities() {
         List<Activity> list = new ArrayList<>();
 
-        list.add(new Activity("STRENGTH", "Силові тренування (ARED): +30 хв", "Силові тренування, 30 хв", "#059669", List.of(
+        list.add(new Activity("STRENGTH", "Силові тренування (ARED)", "Силові тренування, 30 хв", "#059669", List.of(
                 new Effect(MetricType.BONE_DENSITY, 0.4, false, true, "Навантаження на кістки сповільнює втрату кальцію в невагомості."),
                 new Effect(MetricType.HRV, 1.5, false, true, "Регулярні тренування роблять серце стійкішим до стресу."),
                 new Effect(MetricType.HEART_RATE, 15, true, false, "Під час навантаження серце б'ється швидше. Через кілька хвилин пульс повернеться до норми."),
@@ -667,7 +649,7 @@ public class AegisBioApp extends Application {
                 new Effect(MetricType.HYDRATION, -3, false, false, "Ви втратили воду з потом. Випийте води.")
         )));
 
-        list.add(new Activity("CARDIO", "Кардіо (доріжка T2 / велотренажер CEVIS): +30 хв", "Кардіо-тренування, 30 хв", "#16A34A", List.of(
+        list.add(new Activity("CARDIO", "Кардіо (доріжка T2 / велотренажер CEVIS)", "Кардіо-тренування, 30 хв", "#16A34A", List.of(
                 new Effect(MetricType.HRV, 2.5, false, true, "Кардіо тренує серце і покращує стрес-баланс."),
                 new Effect(MetricType.BLOOD_PRESSURE, -3, false, true, "Регулярне кардіо поступово знижує тиск крові."),
                 new Effect(MetricType.BONE_DENSITY, 0.1, false, true, "Біг із фіксацією дає невелике навантаження на кістки."),
@@ -677,12 +659,12 @@ public class AegisBioApp extends Application {
                 new Effect(MetricType.HYDRATION, -4, false, false, "Ви втратили воду з потом. Випийте води.")
         )));
 
-        list.add(new Activity("WATER", "Випити води з електролітами: +400 мл", "Випито 400 мл води з електролітами", "#0891B2", List.of(
+        list.add(new Activity("WATER", "Випити води з електролітами (400 мл)", "Випито 400 мл води з електролітами", "#0891B2", List.of(
                 new Effect(MetricType.HYDRATION, 4, false, true, "Вода поповнює запас рідини в організмі."),
                 new Effect(MetricType.HEART_RATE, -2, true, true, "Коли води достатньо, серцю легше працювати.")
         )));
 
-        list.add(new Activity("SLEEP", "Поспати: +2 год", "Сон, 2 години", "#4F46E5", List.of(
+        list.add(new Activity("SLEEP", "Поспати", "Сон, 2 години", "#4F46E5", List.of(
                 new Effect(MetricType.HRV, 2, false, true, "Сон відновлює нервову систему й серце."),
                 new Effect(MetricType.HEART_RATE, -5, true, true, "Під час сну пульс нижчий, серце відпочиває.")
         )));
@@ -692,13 +674,13 @@ public class AegisBioApp extends Application {
                 new Effect(MetricType.HEART_RATE, 3, true, false, "Травлення трохи прискорює пульс.")
         )));
 
-        list.add(new Activity("BREATH", "Дихальна вправа: 10 хв", "Дихальна вправа, 10 хв", "#7C3AED", List.of(
+        list.add(new Activity("BREATH", "Дихальна вправа", "Дихальна вправа, 10 хв", "#7C3AED", List.of(
                 new Effect(MetricType.HEART_RATE, -6, true, true, "Повільне дихання заспокоює серце."),
                 new Effect(MetricType.BLOOD_PRESSURE, -6, true, true, "Повільне дихання знижує тиск крові."),
                 new Effect(MetricType.HRV, 4, true, true, "Повільне дихання одразу покращує стрес-баланс серця.")
         )));
 
-        list.add(new Activity("LBNP", "Сеанс LBNP (камера для ніг): 45 хв", "Сеанс LBNP, 45 хв", "#2563EB", List.of(
+        list.add(new Activity("LBNP", "Сеанс LBNP (камера для ніг)", "Сеанс LBNP, 45 хв", "#2563EB", List.of(
                 new Effect(MetricType.ICP_OPTIC, -3.5, false, true, "Камера відтягує рідину від голови, тиск на зоровий нерв зменшується."),
                 new Effect(MetricType.BLOOD_PRESSURE, -5, true, true, "Рідина перерозподіляється, тиск крові тимчасово знижується."),
                 new Effect(MetricType.HEART_RATE, 6, true, false, "Серце працює більше, щоб компенсувати зсув рідини.")
@@ -713,28 +695,7 @@ public class AegisBioApp extends Application {
         return null;
     }
 
-    /** Унікальні дії, які радять активні підказки (без прогнозів). */
-    private List<String> recommendedActionIds() {
-        LinkedHashSet<String> ids = new LinkedHashSet<>();
-        for (ClinicalProtocol p : activeProtocols) {
-            if (p.actionId() == null || "FORECAST".equals(p.urgency())) continue;
-            Activity a = findActivity(p.actionId());
-            if (a != null && blockedReason(a) == null) ids.add(p.actionId());
-        }
-        return new ArrayList<>(ids);
-    }
-
-    private void updateAutoPlanButton() {
-        List<String> ids = recommendedActionIds();
-        autoPlanBtn.setVisible(!ids.isEmpty());
-        autoPlanBtn.setText("✅ Виконати все рекомендоване (" + ids.size() + ")");
-    }
-
-    private void applyActivity(Activity a) {
-        applyActivity(a, false);
-    }
-
-    /** automatic = true: дію виконує AI-автопілот блекауту (без вікна пояснень, з позначкою в журналі). */
+    /** automatic = true: дію виконує Автопілот (ШІ) (без вікна пояснень, з позначкою в журналі). */
     private void applyActivity(Activity a, boolean automatic) {
         String blocked = blockedReason(a);
         if (blocked != null) {
@@ -768,7 +729,7 @@ public class AegisBioApp extends Application {
         updateAllTelemetryViews();
         if (!automatic) {
             showEffects(a);
-            addLog(a.logText());
+            addLog("✔ Виконано і підтверджено: " + a.logText());
         }
     }
 
@@ -904,6 +865,7 @@ public class AegisBioApp extends Application {
     private void applyPill(Pill p) {
         PillDose d = pillDose(p);
         if (d.tablets() <= 0) {
+            journal.rejectedPress(clockSec, System.currentTimeMillis());
             showNotice("Таблетки не прийнято: " + p.name(), d.note());
             return;
         }
@@ -932,6 +894,8 @@ public class AegisBioApp extends Application {
         String logText = "Прийнято: " + p.name() + ", " + n + " шт.";
         showEffects(new Activity("PILL_" + p.id(), p.name(), logText, p.color(), scaled));
         addLog(logText);
+        journal.addSelfReported(p.name(), n + " шт. Прийом відмічено космонавтом: таймером його не перевірити.",
+                clockSec, System.currentTimeMillis());
     }
 
     private void refreshCardPillButton(Pill pill, Button btn) {
@@ -986,14 +950,104 @@ public class AegisBioApp extends Application {
     }
 
     private void updateActivityButtons() {
+        boolean busy = journal.hasActive();
         for (Activity a : buildActivities()) {
             Button b = activityButtons.get(a.id());
             if (b == null) continue;
-            boolean blocked = blockedReason(a) != null;
-            b.setDisable(blocked);
-            b.setText(blocked ? "⛔ " + a.button() + " (не зараз)" : activityIcon(a.id()) + a.button());
-            Button q = quickButtons.get(a.id());
-            if (q != null) q.setDisable(blocked);
+            String reason = blockedReason(a);
+            b.setDisable(reason != null || busy);
+            b.setText(reason != null
+                    ? "⛔ " + a.button() + " (не зараз)"
+                    : activityIcon(a.id()) + a.button() + "  ·  " + ActivityJournal.formatSec(activityDurationSec(a.id())));
+        }
+    }
+
+    // ============ ВИКОНАННЯ ДІЙ: РОЗПОЧАТИ, ВИКОНАТИ, ПІДТВЕРДИТИ ============
+    /** Справжня тривалість дії (секунди часу місії). Показники змінюються лише після неї. */
+    private static long activityDurationSec(String id) {
+        return switch (id) {
+            case "STRENGTH", "CARDIO" -> 30 * 60;
+            case "WATER" -> 60;
+            case "SLEEP" -> 2 * 3600;
+            case "MEAL" -> 15 * 60;
+            case "BREATH" -> 10 * 60;
+            case "LBNP" -> 45 * 60;
+            default -> 5 * 60;
+        };
+    }
+
+    private void beginActivity(Activity a) {
+        String blocked = blockedReason(a);
+        if (blocked != null) {
+            journal.rejectedPress(clockSec, System.currentTimeMillis());
+            showNotice("Зараз не можна: " + a.logText(), blocked);
+            return;
+        }
+        long dur = activityDurationSec(a.id());
+        String err = journal.begin(a.id(), a.logText(), dur, clockSec, System.currentTimeMillis());
+        if (err != null) {
+            showNotice("Зараз не можна: " + a.logText(), err);
+            return;
+        }
+        addLog("▶ Розпочато: " + a.logText() + " (триває " + ActivityJournal.formatSec(dur) + ").");
+        afterSessionChange();
+    }
+
+    private void confirmActivity() {
+        ActivityJournal.Session s = journal.active();
+        if (s == null) return;
+        Activity a = findActivity(s.activityId());
+        long now = System.currentTimeMillis();
+        if (a == null || !journal.isReady(clockSec)) {
+            journal.confirm(clockSec, now); // рахується як зайве натискання
+            updateSessionView();
+            return;
+        }
+        String blocked = blockedReason(a);
+        if (blocked != null) {
+            journal.abort(clockSec, now);
+            showNotice("Дію не зараховано: " + a.logText(), blocked);
+            afterSessionChange();
+            return;
+        }
+        journal.confirm(clockSec, now);
+        applyActivity(a, false);
+        afterSessionChange();
+    }
+
+    private void abortActivity() {
+        journal.abort(clockSec, System.currentTimeMillis());
+        afterSessionChange();
+    }
+
+    private void afterSessionChange() {
+        updateSessionView();
+        updateActivityButtons();
+        renderActiveProtocols();
+    }
+
+    /** Панель «Виконується зараз»: таймер, кнопка підтвердження доступна лише після повної тривалості. */
+    private void updateSessionView() {
+        ActivityJournal.Session s = journal.active();
+        boolean on = s != null;
+        sessionActive.setVisible(on);
+        sessionIdle.setVisible(!on);
+        if (on) {
+            long req = s.requiredSec();
+            boolean ready = journal.isReady(clockSec);
+            sessionTitle.setText("Виконується: " + s.title());
+            sessionBar.setProgress(Math.min(1.0, (double) journal.elapsedSec(clockSec) / req));
+            sessionTime.setText(ready
+                    ? "Час минув. Якщо ви справді це виконали, підтвердіть."
+                    : "Залишилось " + ActivityJournal.clock(journal.remainingSec(clockSec))
+                    + " із " + ActivityJournal.clock(req) + ". Підтвердити можна після завершення.");
+            confirmBtn.setDisable(!ready);
+            abortBtn.setText(ready ? "✖ Не виконано" : "✖ Скасувати (показники не зміняться)");
+        } else {
+            long since = journal.sinceLastConfirmed(clockSec);
+            sessionIdle.setText("Зараз нічого не виконується. Показники змінюються лише після виконаної й підтвердженої дії. "
+                    + (since < 0 ? "Підтверджених дій ще не було."
+                    : "Остання підтверджена дія: " + ActivityJournal.formatSec(since) + " тому."));
         }
     }
 
@@ -1010,10 +1064,10 @@ public class AegisBioApp extends Application {
         effectsBox.getChildren().clear();
         Label head = new Label(headText);
         head.setWrapText(true);
-        head.setStyle("-fx-text-fill: white; -fx-font-size: 13px; -fx-font-weight: bold;");
+        head.setStyle("-fx-text-fill: white; -fx-font-size: 26px; -fx-font-weight: bold;");
         Label text = new Label(body);
         text.setWrapText(true);
-        text.setStyle("-fx-text-fill: #FBBF24; -fx-font-size: 12px;");
+        text.setStyle("-fx-text-fill: #FBBF24; -fx-font-size: 24px;");
         effectsBox.getChildren().addAll(head, text);
     }
 
@@ -1031,9 +1085,9 @@ public class AegisBioApp extends Application {
 
     private void showEffectsPlaceholder() {
         effectsBox.getChildren().clear();
-        Label hint = new Label("Натисніть будь-яку дію вище. Тут з'явиться, як вона вплинула на ваше здоров'я і чому.");
+        Label hint = new Label("Тут з'явиться, як остання підтверджена дія вплинула на ваше здоров'я і чому.");
         hint.setWrapText(true);
-        hint.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 12px;");
+        hint.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 24px;");
         effectsBox.getChildren().add(hint);
     }
 
@@ -1042,7 +1096,7 @@ public class AegisBioApp extends Application {
 
         Label head = new Label("Ви зробили: " + a.logText());
         head.setWrapText(true);
-        head.setStyle("-fx-text-fill: white; -fx-font-size: 13px; -fx-font-weight: bold;");
+        head.setStyle("-fx-text-fill: white; -fx-font-size: 26px; -fx-font-weight: bold;");
         effectsBox.getChildren().add(head);
 
         for (Effect e : a.effects()) {
@@ -1051,19 +1105,19 @@ public class AegisBioApp extends Application {
             Label main = new Label(String.format(Locale.US, "%s %s: %+.1f %s (%s)",
                     arrow, e.metric().title, e.delta(), e.metric().unit, when));
             main.setWrapText(true);
-            main.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: "
+            main.setStyle("-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: "
                     + (e.good() ? "#34D399" : "#FBBF24") + ";");
 
             Label why = new Label("Чому: " + e.why());
             why.setWrapText(true);
-            why.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px; -fx-padding: 0 0 4 14;");
+            why.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 22px; -fx-padding: 0 0 4 14;");
 
             effectsBox.getChildren().addAll(main, why);
         }
 
         Label legend = new Label("Зелений: корисно для здоров'я. Жовтий: тимчасова реакція організму або витрата ресурсів.");
         legend.setWrapText(true);
-        legend.setStyle("-fx-text-fill: #64748B; -fx-font-size: 10px;");
+        legend.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 20px;");
         effectsBox.getChildren().add(legend);
     }
 
@@ -1073,7 +1127,7 @@ public class AegisBioApp extends Application {
         logLines.add(line);
 
         Label l = new Label(line);
-        l.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 11px;");
+        l.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 22px;");
         logBox.getChildren().add(0, l);
         if (logBox.getChildren().size() > 12) {
             logBox.getChildren().remove(logBox.getChildren().size() - 1);
@@ -1082,14 +1136,15 @@ public class AegisBioApp extends Application {
 
     // ============ ЕКРАНИ ТА НАВІГАЦІЯ ============
     private enum Screen {
-        HOME("🏠", "Головний", "Тіло, пульс і поради"),
-        METRICS("📊", "Показники", "Усі виміри по групах"),
-        ACTIONS("🧭", "Що робити", "Підказки та ваші дії"),
-        MEDKIT("💊", "Аптечка", "Таблетки з безпечною дозою"),
+        STATUS("🩺", "Стан і дії", "Показники, підказки, ваші дії"),
+        JOURNAL("📋", "Журнал виконання", "Що реально зроблено"),
         TRENDS("📈", "Історія і прогноз", "Що було і що буде"),
-        MISSION("🛰️", "Місія", "Зв'язок, дані, тести"),
-        MESH_CREW("👥", "Команда (Mesh)", "P2P зв'язок та статус екіпажу"),
-        SOURCES("📚", "Ризики і джерела", "Наукова основа: NASA, CSA");
+        MISSION("🛰️", "Місія", "Зв'язок, дані, звіт"),
+        MESH_CREW("👥", "Команда", "Зв'язок та статус екіпажу"),
+        SOURCES("📚", "Джерела", "Наукова основа: NASA, CSA"),
+        MENU("🏠", "Меню", "Головне меню"),
+        BODY("🧑‍🚀", "Голограма екіпажу", "Живі показники на тілі"),
+        MINDCARE("🧠", "Психологічна підтримка", "Дихання, настрій, SOS");
 
         final String icon;
         final String title;
@@ -1103,100 +1158,112 @@ public class AegisBioApp extends Application {
     }
 
     private final Map<Screen, Node> screens = new EnumMap<>(Screen.class);
-    private final Map<Screen, ToggleButton> navButtons = new EnumMap<>(Screen.class);
-    private final ToggleGroup navGroup = new ToggleGroup();
-    private Screen currentScreen = Screen.HOME;
+    private Screen currentScreen = Screen.MENU;
+    private OrbitMenu orbitMenu;
+    private MissionMapCanvas missionMap;
+    private AstronautView bodyAstronaut;
+    private MindCarePanel mindCarePanel;
     private HeartMonitor heartMonitor;
+    private final Button backBtn = new Button("◀ Меню");
+    private final Label pageTitleLabel = new Label();
+    private Label headerLogo;
+    private final Map<Screen, Boolean> counterOn = new EnumMap<>(Screen.class);
+    private int healthScoreValue = 100;
+    private String healthVerdict = "Усе гаразд";
+    private String healthColorHex = "#3CC48A";
+    private final Label bodyScoreLabel = new Label();
+    private final Label bodyVerdictLabel = new Label();
+    private final Label bodyExplainLabel = new Label();
     private final Button urgentBtn = new Button();
     private Stage mainStage;
 
     private static final String PANEL_STYLE = HoloUi.BLOCK_STYLE;
     private static final String SECTION_TITLE_STYLE =
-            "-fx-text-fill: #38BDF8; -fx-font-size: 13px; -fx-font-weight: bold;";
+            "-fx-text-fill: #38BDF8; -fx-font-size: 26px; -fx-font-weight: bold;";
     private static final String CARD_STYLE = HoloUi.CARD_STYLE;
 
+    /** Лічильник розділу: червоний бейдж на вузлі орбітального меню. */
+    private void setCounter(Screen sc, String text, boolean visible) {
+        counterOn.put(sc, visible);
+        if (orbitMenu != null) {
+            orbitMenu.setBadge(sc.name(), visible ? text : null);
+            updateMenuStates();
+        }
+    }
+
     private void showScreen(Screen target) {
+        Screen prev = currentScreen;
         currentScreen = target;
         for (Map.Entry<Screen, Node> en : screens.entrySet()) {
             en.getValue().setVisible(en.getKey() == target);
         }
-        ToggleButton tb = navButtons.get(target);
-        if (tb != null && !tb.isSelected()) tb.setSelected(true);
-    }
-
-    private void styleNav(ToggleButton b, boolean selected) {
-        b.setStyle(selected
-                ? "-fx-background-color: linear-gradient(to right, rgba(56,189,248,0.28), rgba(56,189,248,0.04)); "
-                + "-fx-border-color: #38BDF8; -fx-border-width: 0 0 0 3; "
-                + "-fx-background-radius: 8; -fx-border-radius: 8; -fx-cursor: hand;"
-                : "-fx-background-color: transparent; -fx-border-color: transparent; -fx-border-width: 0 0 0 3; "
-                + "-fx-background-radius: 8; -fx-cursor: hand;");
-    }
-
-    private VBox buildNavBar() {
-        VBox nav = new VBox(6);
-        nav.setPadding(new Insets(16, 10, 16, 10));
-        nav.setPrefWidth(214);
-        nav.setMinWidth(214);
-        nav.setStyle("-fx-background-color: #0B111E; -fx-border-color: #1E293B; -fx-border-width: 0 1 0 0;");
-
-        Label menu = new Label("МЕНЮ");
-        menu.setStyle("-fx-text-fill: #475569; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 0 0 4 6;");
-        nav.getChildren().add(menu);
-
-        for (Screen sc : Screen.values()) {
-            Label ic = new Label(sc.icon);
-            ic.setMinWidth(30);
-            ic.setStyle("-fx-font-size: 20px;");
-            Label tt = new Label(sc.title);
-            tt.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 13px; -fx-font-weight: bold;");
-            Label hh = new Label(sc.hint);
-            hh.setStyle("-fx-text-fill: #64748B; -fx-font-size: 10px;");
-            VBox texts = new VBox(1, tt, hh);
-            HBox.setHgrow(texts, Priority.ALWAYS);
-
-            Label badge = new Label();
-            badge.managedProperty().bind(badge.visibleProperty());
-            badge.setVisible(false);
-            badge.setStyle("-fx-background-color: #EF4444; -fx-text-fill: white; -fx-font-size: 10px; "
-                    + "-fx-font-weight: bold; -fx-padding: 1 6 1 6; -fx-background-radius: 8;");
-            navBadges.put(sc, badge);
-
-            HBox row = new HBox(8, ic, texts, badge);
-            row.setAlignment(Pos.CENTER_LEFT);
-
-            ToggleButton b = new ToggleButton();
-            b.setGraphic(row);
-            b.setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
-            b.setToggleGroup(navGroup);
-            b.setMaxWidth(Double.MAX_VALUE);
-            b.setAlignment(Pos.CENTER_LEFT);
-            b.setPadding(new Insets(8, 10, 8, 10));
-            styleNav(b, false);
-            b.selectedProperty().addListener((o, was, is) -> styleNav(b, is));
-            b.setOnAction(e -> showScreen(sc));
-            navButtons.put(sc, b);
-            nav.getChildren().add(b);
+        boolean menu = target == Screen.MENU;
+        backBtn.setVisible(!menu);
+        pageTitleLabel.setVisible(!menu);
+        if (headerLogo != null) headerLogo.setVisible(menu); // на підекранах місце потрібне назві розділу
+        Node drawn = switch (target) {
+            case MESH_CREW -> HoloUi.iconTeam();
+            case MINDCARE -> HoloUi.iconMind();
+            case BODY -> HoloUi.iconAstronaut();
+            default -> null;
+        };
+        pageTitleLabel.setGraphicTextGap(10);
+        pageTitleLabel.setGraphic(drawn);
+        pageTitleLabel.setText(drawn != null ? target.title : target.icon + "  " + target.title);
+        if (mindCarePanel != null) {
+            if (target == Screen.MINDCARE) mindCarePanel.onShown();
+            else if (prev == Screen.MINDCARE) mindCarePanel.onHidden();
         }
-        // Не дозволяємо «зняти вибір» повторним натисканням
-        navGroup.selectedToggleProperty().addListener((o, oldT, newT) -> {
-            if (newT == null && oldT != null) oldT.setSelected(true);
-        });
-
-        Region spacer = new Region();
-        VBox.setVgrow(spacer, Priority.ALWAYS);
-        Label legendTitle = new Label("ЩО ОЗНАЧАЮТЬ КОЛЬОРИ");
-        legendTitle.setStyle("-fx-text-fill: #475569; -fx-font-size: 10px; -fx-font-weight: bold;");
-        VBox legend = new VBox(5, legendTitle,
-                HoloUi.chip("● Усе гаразд", HoloUi.GREEN),
-                HoloUi.chip("● Потрібна увага", HoloUi.AMBER),
-                HoloUi.chip("● Небезпека", HoloUi.RED));
-        legend.setPadding(new Insets(10, 6, 0, 6));
-        nav.getChildren().addAll(spacer, legend);
-        return nav;
     }
 
-    /** Червона кнопка у верхній панелі та лічильник на пункті «Що робити». */
+    private static boolean isOrderedAtLeast(StressEngine.Level level, StressEngine.Level min) {
+        return level.ordinal() >= min.ordinal();
+    }
+
+    /** Колір вузлів орбітального меню відображає стан кожного розділу. */
+    private void updateMenuStates() {
+        if (orbitMenu == null) return;
+        boolean urgent = false;
+        boolean todo = false;
+        boolean forecast = false;
+        for (ClinicalProtocol p : activeProtocols) {
+            if ("CRITICAL".equals(p.urgency()) || "HIGH".equals(p.urgency())) urgent = true;
+            if (!"NOMINAL".equals(p.urgency()) && !"FORECAST".equals(p.urgency())) todo = true;
+            if ("FORECAST".equals(p.urgency())) forecast = true;
+        }
+        orbitMenu.setItemState(Screen.STATUS.name(),
+                urgent ? OrbitMenu.State.DANGER : todo ? OrbitMenu.State.WARN : OrbitMenu.State.INFO,
+                urgent ? "Є термінові підказки" : todo ? "Є підказки, що потребують дій" : "Усе в нормі");
+        orbitMenu.setItemState(Screen.JOURNAL.name(),
+                counterOn.getOrDefault(Screen.JOURNAL, false) ? OrbitMenu.State.WARN : OrbitMenu.State.NEUTRAL,
+                counterOn.getOrDefault(Screen.JOURNAL, false) ? "Є невиконані або розбіжні записи" : "");
+        orbitMenu.setItemState(Screen.TRENDS.name(),
+                forecast ? OrbitMenu.State.WARN : OrbitMenu.State.NEUTRAL,
+                forecast ? "Прогноз попереджає про вихід показника за межу" : "");
+        orbitMenu.setItemState(Screen.MISSION.name(),
+                blackoutActive ? OrbitMenu.State.WARN : OrbitMenu.State.NEUTRAL,
+                blackoutActive ? "Автономний режим: зв'язку із Землею немає" : "");
+        boolean sos = counterOn.getOrDefault(Screen.MESH_CREW, false);
+        orbitMenu.setItemState(Screen.MESH_CREW.name(),
+                sos ? OrbitMenu.State.DANGER : OrbitMenu.State.OK,
+                sos ? "Хтось з екіпажу подав сигнал" : "Екіпаж на зв'язку");
+        orbitMenu.setItemState(Screen.SOURCES.name(), OrbitMenu.State.NEUTRAL, "");
+        StressEngine.Level lvl = stressEngine.latest().level();
+        orbitMenu.setItemState(Screen.MINDCARE.name(),
+                isOrderedAtLeast(lvl, StressEngine.Level.CRITICAL) ? OrbitMenu.State.DANGER
+                        : isOrderedAtLeast(lvl, StressEngine.Level.HIGH) ? OrbitMenu.State.WARN : OrbitMenu.State.OK,
+                "Рівень стресу: " + lvl.label);
+
+        String text;
+        Color c;
+        if (healthScoreValue >= 90) { text = "Усе гаразд"; c = Color.web("#3CC48A"); }
+        else if (healthScoreValue >= 70) { text = "Добре"; c = Color.web("#7FD8A8"); }
+        else if (healthScoreValue >= 50) { text = "Потрібна увага"; c = Color.web("#F2B33D"); }
+        else { text = "Небезпечно"; c = Color.web("#E5535F"); }
+        orbitMenu.setVerdict(text, c);
+    }
+
+    /** Червона кнопка у верхній панелі та лічильник на пункті «Стан і дії». */
     private void updateAlertIndicators() {
         int urgent = 0;
         int todo = 0;
@@ -1204,68 +1271,9 @@ public class AegisBioApp extends Application {
             if ("CRITICAL".equals(p.urgency()) || "HIGH".equals(p.urgency())) urgent++;
             if (!"NOMINAL".equals(p.urgency()) && !"FORECAST".equals(p.urgency())) todo++;
         }
-        Label badge = navBadges.get(Screen.ACTIONS);
-        if (badge != null) {
-            badge.setText(String.valueOf(todo));
-            badge.setVisible(todo > 0);
-        }
+        setCounter(Screen.STATUS, String.valueOf(todo), todo > 0);
         urgentBtn.setVisible(urgent > 0);
         urgentBtn.setText("⚠ ТЕРМІНОВО: " + urgent + ". Відкрити підказки");
-    }
-
-    /** Порадник на головному екрані: одна проста фраза про те, що важливо зараз. */
-    private void updateAssistant() {
-        ClinicalProtocol top = null;
-        ClinicalProtocol forecast = null;
-        for (ClinicalProtocol p : activeProtocols) {
-            if ("NOMINAL".equals(p.urgency())) continue;
-            if ("FORECAST".equals(p.urgency())) {
-                if (forecast == null) forecast = p;
-                continue;
-            }
-            if (top == null || rank(p.urgency()) < rank(top.urgency())) top = p;
-        }
-
-        String face;
-        String msg;
-        Color c;
-        if (blackoutActive) {
-            face = "📡";
-            c = HoloUi.PURPLE;
-            msg = "Зв'язку із Землею немає. Програма працює сама: виконуйте підказки на вкладці «Що робити».";
-        } else if (top != null && "CRITICAL".equals(top.urgency())) {
-            face = "🚨";
-            c = HoloUi.RED;
-            msg = "Терміново! " + top.title() + ". Відкрийте «Що робити»: там розписано кроки.";
-        } else if (top != null && "HIGH".equals(top.urgency())) {
-            face = "⚠️";
-            c = HoloUi.ORANGE;
-            msg = "Потрібна увага: " + top.title() + ". Краще зробити це найближчим часом.";
-        } else if (top != null) {
-            face = "🤔";
-            c = HoloUi.AMBER;
-            msg = "Невелике відхилення: " + top.title() + ". Подивіться підказку, це легко виправити.";
-        } else if (forecast != null) {
-            face = "🔮";
-            c = HoloUi.CYAN;
-            msg = "Зараз усе гаразд, але прогноз застерігає: " + forecast.title() + ".";
-        } else if (hydrationLiters < 1.4) {
-            face = "💧";
-            c = HoloUi.GREEN;
-            msg = String.format(Locale.US, "Усе гаразд. Але води випито лише %.1f з 2.8 л. Не забувайте пити.", hydrationLiters);
-        } else if (countermeasureMinutes < 90) {
-            face = "🏋️";
-            c = HoloUi.GREEN;
-            msg = "Усе гаразд. Не пропустіть тренування: у невагомості воно захищає кістки й очі.";
-        } else {
-            face = "😊";
-            c = HoloUi.GREEN;
-            msg = "Усе чудово! Показники в нормі. Так тримати.";
-        }
-        assistantFace.setText(face);
-        assistantText.setText(msg);
-        assistantBox.setStyle("-fx-background-color: " + HoloUi.rgba(c, 0.10) + "; -fx-border-color: "
-                + HoloUi.hex(c) + "; -fx-border-radius: 10; -fx-background-radius: 10;");
     }
 
     // ============ ВЕРХНЯ ПАНЕЛЬ (годинник видно на всіх екранах) ============
@@ -1275,15 +1283,21 @@ public class AegisBioApp extends Application {
         header.setAlignment(Pos.CENTER_LEFT);
         header.setStyle("-fx-background-color: #0F1626; -fx-border-color: #1E293B; -fx-border-width: 0 0 1 0;");
 
-        Label logoTitle = new Label("◈ AEGIS-BIO");
-        logoTitle.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 20px; -fx-font-weight: 900; "
+        Label logoTitle = new Label("◈ VITAL");
+        logoTitle.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 34px; -fx-font-weight: 900; "
                 + "-fx-effect: dropshadow(gaussian, rgba(56,189,248,0.8), 12, 0.25, 0, 0);");
+        logoTitle.setMinWidth(Region.USE_PREF_SIZE);
+        logoTitle.managedProperty().bind(logoTitle.visibleProperty());
+        headerLogo = logoTitle;
 
-        Label clockCaption = new Label("ЧАС МІСІЇ (UTC)");
-        clockCaption.setStyle("-fx-text-fill: #64748B; -fx-font-size: 10px; -fx-font-weight: bold;");
-        bigClockLabel.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 28px; -fx-font-weight: 900; "
+        Label clockCaption = new Label("Час місії (UTC)");
+        clockCaption.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 18px; -fx-font-weight: bold;");
+        bigClockLabel.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 44px; -fx-font-weight: 900; "
                 + "-fx-font-family: 'Consolas', 'Courier New', monospace;");
-        simClockLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
+        simClockLabel.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 18px;");
+        clockCaption.setMinWidth(Region.USE_PREF_SIZE);
+        bigClockLabel.setMinWidth(Region.USE_PREF_SIZE);
+        simClockLabel.setMinWidth(Region.USE_PREF_SIZE);
         VBox clockBox = new VBox(1, clockCaption, bigClockLabel, simClockLabel);
         clockBox.setAlignment(Pos.CENTER);
         clockBox.setPadding(new Insets(4, 18, 4, 18));
@@ -1294,24 +1308,39 @@ public class AegisBioApp extends Application {
                 + "-fx-cursor: hand; -fx-background-radius: 4;");
         urgentBtn.managedProperty().bind(urgentBtn.visibleProperty());
         urgentBtn.setVisible(false);
-        urgentBtn.setOnAction(e -> showScreen(Screen.ACTIONS));
+        urgentBtn.setOnAction(e -> showScreen(Screen.STATUS));
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Label speedLabel = new Label("ШВИДКІСТЬ ЧАСУ:");
-        speedLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px; -fx-font-weight: bold;");
+        Label speedLabel = new Label("Швидкість часу:");
+        speedLabel.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 20px; -fx-font-weight: bold;");
+        speedLabel.setMinWidth(Region.USE_PREF_SIZE);
 
         ComboBox<String> speedBox = new ComboBox<>();
-        speedBox.getItems().addAll("Звичайна (x1)", "Швидка (x10)", "Дуже швидка (x60)");
+        speedBox.getItems().addAll("Звичайна (×1)", "Швидка (×10)", "Дуже швидка (×60)");
         speedBox.getSelectionModel().select(0);
-        speedBox.setStyle("-fx-font-size: 12px;");
+        speedBox.setStyle("-fx-font-size: 20px;");
+        speedBox.setMinWidth(Region.USE_PREF_SIZE);
         speedBox.setOnAction(e -> {
             int idx = speedBox.getSelectionModel().getSelectedIndex();
             simSpeed = new int[]{1, 10, 60}[Math.max(0, idx)];
         });
 
-        header.getChildren().addAll(logoTitle, clockBox, urgentBtn, spacer, speedLabel, speedBox);
+        backBtn.setStyle("-fx-background-color: rgba(56,189,248,0.14); -fx-text-fill: #E2E8F0; -fx-font-size: 24px; "
+                + "-fx-font-weight: bold; -fx-border-color: #38BDF8; -fx-border-radius: 8; -fx-background-radius: 8; "
+                + "-fx-padding: 8 16 8 16; -fx-cursor: hand;");
+        backBtn.setMinWidth(Region.USE_PREF_SIZE);
+        backBtn.setTooltip(new Tooltip("Повернутися в головне меню"));
+        backBtn.managedProperty().bind(backBtn.visibleProperty());
+        backBtn.setVisible(false);
+        backBtn.setOnAction(e -> showScreen(Screen.MENU));
+        pageTitleLabel.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 32px; -fx-font-weight: bold;");
+        pageTitleLabel.setMinWidth(Region.USE_PREF_SIZE);
+        pageTitleLabel.managedProperty().bind(pageTitleLabel.visibleProperty());
+        pageTitleLabel.setVisible(false);
+
+        header.getChildren().addAll(logoTitle, clockBox, backBtn, pageTitleLabel, urgentBtn, spacer, speedLabel, speedBox);
         return header;
     }
 
@@ -1336,23 +1365,104 @@ public class AegisBioApp extends Application {
         return g;
     }
 
+    // ============ ГОЛОВНЕ ОРБІТАЛЬНЕ МЕНЮ ============
+    private Node buildMenuScreen() {
+        List<OrbitMenu.Item> items = List.of(
+                // акцентне коло: голограма екіпажу (космонавт)
+                new OrbitMenu.Item(Screen.BODY.name(), "Голограма екіпажу", "Живі показники на тілі космонавта", true),
+                new OrbitMenu.Item(Screen.STATUS.name(), "Стан і дії", "Показники, підказки та ваші дії"),
+                new OrbitMenu.Item(Screen.JOURNAL.name(), "Журнал", "Що справді зроблено"),
+                new OrbitMenu.Item(Screen.TRENDS.name(), "Історія і прогноз", "Що було і що буде"),
+                new OrbitMenu.Item(Screen.MISSION.name(), "Місія", "Зв'язок, дані, звіт"),
+                new OrbitMenu.Item(Screen.MESH_CREW.name(), "Команда", "Зв'язок та статус екіпажу"),
+                new OrbitMenu.Item(Screen.SOURCES.name(), "Джерела", "Наукова основа: NASA, CSA"),
+                new OrbitMenu.Item(Screen.MINDCARE.name(), "Психологічна підтримка", "Дихання, настрій, допомога колезі"));
+        orbitMenu = new OrbitMenu(items);
+        orbitMenu.setOnSelect(id -> showScreen(Screen.valueOf(id)));
+        updateMenuStates();
+        return orbitMenu;
+    }
+
+    // ============ ГОЛОГРАМА ЕКІПАЖУ (космонавт із версії Stellar-Sync) ============
+    private Node buildBodyScreen() {
+        bodyAstronaut = new AstronautView(false, currentTelemetry, this::inRange, this::metricHint,
+                () -> healthScoreValue, SPINE_ELONGATION_CM);
+        bodyAstronaut.setMinHeight(380);
+        VBox.setVgrow(bodyAstronaut, Priority.ALWAYS);
+        VBox bodyBlock = HoloUi.block(HoloUi.iconAstronaut(), "Голограма екіпажу",
+                "Світні точки на тілі показують живі дані вашого організму",
+                "Кожна світна точка: частина тіла, за якою стежить програма. Наведіть на неї курсор: "
+                        + "з'явиться пояснення простими словами та межі норми. "
+                        + "Колір сяйва змінюється, коли стан погіршується.",
+                bodyAstronaut);
+        HBox.setHgrow(bodyBlock, Priority.ALWAYS);
+        bodyBlock.setMinWidth(0);
+
+        bodyScoreLabel.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 68px; -fx-font-weight: bold;");
+        bodyVerdictLabel.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 40px; -fx-font-weight: bold;");
+        bodyExplainLabel.setWrapText(true);
+        bodyExplainLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 26px;");
+        VBox healthBox = new VBox(4, bodyScoreLabel, bodyVerdictLabel, bodyExplainLabel);
+        VBox healthBlock = HoloUi.block("🩺", "Загальний стан", "Оцінка від 0 до 100",
+                "Програма перевіряє 10 показників. Оцінка = скільки з них зараз у нормі. "
+                        + "90 і більше: чудово. 70-89: добре. 50-69: потрібна увага. Менше 50: небезпечно.",
+                healthBox);
+
+        heartMonitor = new HeartMonitor();
+        heartMonitor.setManaged(false);
+        Pane hrHolder = new Pane(heartMonitor);
+        hrHolder.setMinHeight(120);
+        hrHolder.setPrefHeight(120);
+        hrHolder.setMaxHeight(120);
+        heartMonitor.widthProperty().bind(hrHolder.widthProperty());
+        heartMonitor.heightProperty().bind(hrHolder.heightProperty());
+        VBox heartBlock = HoloUi.block("❤", "Серцебиття", "Лінія біжить із вашою справжньою частотою пульсу",
+                "Зелена лінія: серце працює спокійно. Помаранчева: пульс або стрес-баланс поза нормою.", hrHolder);
+
+        Button toStatus = new Button("Усі показники й дії →");
+        toStatus.setMaxWidth(Double.MAX_VALUE);
+        toStatus.setStyle("-fx-background-color: #0EA5E9; -fx-text-fill: white; -fx-font-weight: bold; "
+                + "-fx-font-size: 28px; -fx-background-radius: 8; -fx-cursor: hand; -fx-padding: 10 16 10 16;");
+        toStatus.setOnAction(e -> showScreen(Screen.STATUS));
+
+        VBox right = new VBox(12, healthBlock, heartBlock, toStatus);
+        right.setPrefWidth(400);
+        right.setMinWidth(320);
+        right.setMaxWidth(460);
+
+        HBox row = new HBox(14, bodyBlock, right);
+        row.setPadding(new Insets(2));
+        return row;
+    }
+
+    // ============ ПСИХОЛОГІЧНА ПІДТРИМКА (окрема вкладка) ============
+    private Node buildMindCareScreen() {
+        mindCarePanel = new MindCarePanel(new MindCarePanel.Hooks(
+                stressEngine,
+                () -> clockSec,
+                this::addLog,
+                this::onMindCareBreathingDone,
+                this::onMindCareSos));
+        return mindCarePanel.view();
+    }
+
     private StackPane buildMainDashboard() {
         StackPane stack = new StackPane();
         stack.setPadding(new Insets(16));
 
-        screens.put(Screen.HOME, buildHomeScreen());
-        screens.put(Screen.METRICS, buildMetricsScreen());
-        screens.put(Screen.ACTIONS, buildActionsScreen());
-        screens.put(Screen.MEDKIT, buildMedkitScreen());
+        screens.put(Screen.MENU, buildMenuScreen());
+        screens.put(Screen.STATUS, buildStatusScreen());
+        screens.put(Screen.JOURNAL, buildJournalScreen());
         screens.put(Screen.TRENDS, buildTrendsScreen());
         screens.put(Screen.MISSION, buildMissionScreen());
         screens.put(Screen.MESH_CREW, buildCrewMeshScreen());
         screens.put(Screen.SOURCES, scroll(new SourcesPanel()));
+        screens.put(Screen.BODY, buildBodyScreen());
+        screens.put(Screen.MINDCARE, buildMindCareScreen());
 
         for (Node n : screens.values()) stack.getChildren().add(n);
 
-
-        showScreen(Screen.HOME);
+        showScreen(Screen.MENU);
         updateAllTelemetryViews();
         return stack;
     }
@@ -1398,441 +1508,209 @@ public class AegisBioApp extends Application {
         t.setMaxWidth(360);
         t.setShowDelay(Duration.millis(80));
         t.setShowDuration(Duration.seconds(40));
-        t.setStyle("-fx-font-size: 12px;");
+        t.setStyle("-fx-font-size: 24px;");
         return t;
     }
 
-    private List<Hot> bodyHotspots() {
-        double cx = BODY_W / 2;
-        double hy = 62;
-        List<Hot> l = new ArrayList<>();
-        l.add(hotFor(cx, hy - 3, MetricType.ICP_OPTIC));
-        l.add(hotFor(cx + 16, hy + 68, MetricType.SPO2));
-        l.add(new Hot(cx, hy + 135, "Хребет у невагомості",
-                "Без ваги хребет розтягується приблизно на " + SPINE_ELONGATION_CM + " см. "
-                        + "Це нормально, але може боліти спина. Допомагають силові тренування."));
-        l.add(hotFor(cx + 40, hy + 150, MetricType.RADIATION_DOSE));
-        l.add(hotFor(cx, hy + 75, MetricType.HEART_RATE));
-        l.add(hotFor(cx - 14, hy + 100, MetricType.HRV));
-        l.add(hotFor(cx, hy + 160, MetricType.HYDRATION));
-        l.add(hotFor(cx - 26, hy + 285, MetricType.BONE_DENSITY));
-        return l;
-    }
+    // ============ ЕКРАН 1: СТАН І ДІЇ (показники, підказки і дії в одному місці) ============
+    /** Компактна таблиця всіх показників: значення, норма, стан, зміна після останньої дії. */
+    private Node buildMetricsTable() {
+        GridPane g = new GridPane();
+        g.setHgap(14);
+        g.setVgap(7);
+        ColumnConstraints nameCol = new ColumnConstraints();
+        nameCol.setHgrow(Priority.ALWAYS);
+        nameCol.setMinWidth(150);
+        g.getColumnConstraints().add(nameCol);
 
-    private Hot hotFor(double x, double y, MetricType type) {
-        double v = currentTelemetry.get(type);
-        String st = inRange(type, v) ? "у нормі" : "поза нормою";
-        return new Hot(x, y,
-                String.format(Locale.US, "%s: %.1f %s (%s)", type.title, v, type.unit, st),
-                metricHint(type) + "\nНорма: " + HoloUi.num(type.minNominal) + "–"
-                        + HoloUi.num(type.maxNominal) + " " + type.unit);
-    }
+        String[] heads = {"Показник", "Зараз", "Норма", "Стан", "Після дії", "Джерело"};
+        for (int c = 0; c < heads.length; c++) {
+            Label h = new Label(heads[c]);
+            h.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 20px; -fx-font-weight: bold;");
+            g.add(h, c, 0);
+        }
+        int r = 1;
+        for (MetricType t : MetricType.values()) {
+            Label name = new Label(t.title);
+            name.setWrapText(true);
+            name.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 24px;");
+            Tooltip tip = new Tooltip(metricHint(t));
+            tip.setWrapText(true);
+            tip.setMaxWidth(320);
+            tip.setShowDelay(Duration.millis(80));
+            name.setTooltip(tip);
 
-    private void onBodyHover(double mx, double my, double screenX, double screenY) {
-        double lx = (mx - bodyOffX) / bodyScale;
-        double ly = (my - bodyOffY) / bodyScale;
-        Hot best = null;
-        double bestDist = 24;
-        for (Hot h : bodyHotspots()) {
-            double d = Math.hypot(h.x() - lx, h.y() - ly);
-            if (d < bestDist) {
-                bestDist = d;
-                best = h;
+            Label val = new Label();
+            valueLabels.put(t, val);
+            Label norm = new Label(HoloUi.num(t.minNominal) + "–" + HoloUi.num(t.maxNominal) + " " + t.unit);
+            norm.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 22px;");
+            Label chip = new Label();
+            chips.put(t, chip);
+            HoloUi.styleChip(chip, "...", HoloUi.CYAN);
+            Label delta = new Label();
+            deltaLabels.put(t, delta);
+
+            g.add(name, 0, r);
+            g.add(val, 1, r);
+            g.add(norm, 2, r);
+            g.add(chip, 3, r);
+            g.add(delta, 4, r);
+            SpaceSources.Risk nasaRisk = SpaceSources.forMetric(t.name());
+            if (nasaRisk != null) {
+                Hyperlink src = SourceLinks.link("📎 NASA", nasaRisk.source().url());
+                src.setTooltip(new Tooltip("NASA HRP: " + nasaRisk.title() + "\n" + nasaRisk.source().url()
+                        + "\nКлік відкриє сторінку в браузері"));
+                g.add(src, 5, r);
             }
+            r++;
         }
-        hoverHot = best;
-        if (best == null) {
-            bodyTip.hide();
-            bodyHudCanvas.setCursor(Cursor.DEFAULT);
-            return;
-        }
-        bodyHudCanvas.setCursor(Cursor.HAND);
-        bodyTip.setText(best.title() + "\n\n" + best.text());
-        bodyTip.show(bodyHudCanvas, screenX + 16, screenY + 16);
+        return g;
     }
 
-    // ============ ЕКРАН 1: ГОЛОВНИЙ (голограма, порадник, серцебиття) ============
-    private Node buildHomeScreen() {
-        // Підказка для новачка (її можна закрити)
-        Label tipText = new Label("👋 Як користуватись: 1) наведіть курсор на світну точку космонавта, "
-                + "щоб дізнатися, що вона означає; 2) читайте «Порадника» праворуч; "
-                + "3) коли щось не так, відкрийте «Що робити» і натискайте кнопки.");
-        tipText.setWrapText(true);
-        tipText.setStyle("-fx-text-fill: #BAE6FD; -fx-font-size: 12px;");
-        Button closeTip = new Button("✕");
-        closeTip.setStyle("-fx-background-color: transparent; -fx-text-fill: #7DD3FC; -fx-cursor: hand;");
-        HBox tipBanner = new HBox(10, tipText, closeTip);
-        HBox.setHgrow(tipText, Priority.ALWAYS);
-        tipBanner.setAlignment(Pos.CENTER_LEFT);
-        tipBanner.setPadding(new Insets(8, 12, 8, 14));
-        tipBanner.setStyle("-fx-background-color: rgba(56,189,248,0.10); -fx-border-color: #0C4A6E; "
-                + "-fx-border-radius: 10; -fx-background-radius: 10;");
-        tipBanner.managedProperty().bind(tipBanner.visibleProperty());
-        closeTip.setOnAction(e -> tipBanner.setVisible(false));
-
-        // Ліва частина: голограма
-        bodyHudCanvas = new Canvas(BODY_W, BODY_H);
-        bodyHudCanvas.setManaged(false);
-        Pane canvasHolder = new Pane(bodyHudCanvas);
-        canvasHolder.setMinSize(0, 0);
-        bodyHudCanvas.widthProperty().bind(canvasHolder.widthProperty());
-        bodyHudCanvas.heightProperty().bind(canvasHolder.heightProperty());
-        VBox.setVgrow(canvasHolder, Priority.ALWAYS);
-
-        bodyTip.setWrapText(true);
-        bodyTip.setMaxWidth(320);
-        bodyTip.setStyle("-fx-font-size: 12px;");
-        bodyHudCanvas.setOnMouseMoved(e -> onBodyHover(e.getX(), e.getY(), e.getScreenX(), e.getScreenY()));
-        bodyHudCanvas.setOnMouseExited(e -> {
-            bodyTip.hide();
-            hoverHot = null;
-        });
-
-        VBox bodyBlock = HoloUi.block("🧑‍🚀", "Голограма екіпажу",
-                "Світні точки на тілі показують живі дані вашого організму",
-                "Кожна світна точка: частина тіла, за якою стежить програма. Наведіть на неї курсор: "
-                        + "з'явиться пояснення простими словами та межі норми. "
-                        + "Колір і сяйво навколо голограми змінюються, коли стан погіршується.",
-                canvasHolder);
-        HBox.setHgrow(bodyBlock, Priority.ALWAYS);
-        bodyBlock.setMinWidth(0);
-
-        // Права частина: загальний стан
-        healthGauge = new HoloUi.RingGauge(124);
-        healthVerdictLabel.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 20px; -fx-font-weight: bold;");
-        healthExplainLabel.setWrapText(true);
-        healthExplainLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 12px;");
-        VBox healthText = new VBox(4, healthVerdictLabel, healthExplainLabel);
-        healthText.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(healthText, Priority.ALWAYS);
-        HBox healthRow = new HBox(14, healthGauge, healthText);
-        healthRow.setAlignment(Pos.CENTER_LEFT);
-        VBox healthBlock = HoloUi.block("🛡️", "Загальний стан", "Оцінка від 0 до 100",
-                "Програма перевіряє 10 показників. Оцінка = скільки з них зараз у нормі. "
-                        + "90 і більше: чудово. 70-89: добре. 50-69: потрібна увага. Менше 50: небезпечно.",
-                healthRow);
-
-        // Порадник
-        assistantFace.setStyle("-fx-font-size: 32px;");
-        assistantText.setWrapText(true);
-        assistantText.setMaxWidth(Double.MAX_VALUE);
-        assistantText.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 13px;");
-        HBox bubble = new HBox(12, assistantFace, assistantText);
-        bubble.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(assistantText, Priority.ALWAYS);
-        Button goActions = new Button("Відкрити «Що робити» →");
-        goActions.setMaxWidth(Double.MAX_VALUE);
-        goActions.setStyle("-fx-background-color: #0C4A6E; -fx-text-fill: white; -fx-font-weight: bold; "
-                + "-fx-background-radius: 8; -fx-cursor: hand;");
-        goActions.setOnAction(e -> showScreen(Screen.ACTIONS));
-        assistantBox.getChildren().setAll(bubble, goActions);
-        assistantBox.setPadding(new Insets(12));
-        VBox assistBlock = HoloUi.block("💬", "Порадник", "Що важливо саме зараз",
-                "Порадник читає всі показники й каже одну головну річ. Колір рамки: зелений: усе добре, "
-                        + "жовтий: легке відхилення, оранжевий: потрібна увага, червоний: терміново.",
-                assistantBox);
-
-        // Швидкі дії
-        FlowPane quick = new FlowPane(8, 8);
-        String[][] quickDefs = {{"WATER", "💧 Випити води"}, {"BREATH", "🌬️ Подихати 10 хв"}, {"MEAL", "🍽️ Поїсти"}};
-        for (String[] d : quickDefs) {
-            Activity a = findActivity(d[0]);
-            if (a == null) continue;
-            Button b = new Button(d[1]);
-            b.setStyle("-fx-background-color: " + a.color() + "; -fx-text-fill: white; -fx-font-size: 12px; "
-                    + "-fx-background-radius: 8; -fx-cursor: hand;");
-            b.setTooltip(activityTooltip(a));
-            b.setOnAction(e -> {
-                applyActivity(a);
-                addLogIfBlockedHint(a);
-            });
-            quickButtons.put(a.id(), b);
-            quick.getChildren().add(b);
-        }
-        Button more = new Button("Усі дії →");
-        more.setStyle("-fx-background-color: #1E293B; -fx-text-fill: #CBD5E1; -fx-font-size: 12px; "
-                + "-fx-background-radius: 8; -fx-cursor: hand;");
-        more.setOnAction(e -> showScreen(Screen.ACTIONS));
-        quick.getChildren().add(more);
-        VBox quickBlock = HoloUi.block("⚡", "Швидкі дії", "Найчастіші кроки в один дотик",
-                "Наведіть курсор на кнопку, щоб побачити, що саме вона змінить в організмі. "
-                        + "Повний список дій на вкладці «Що робити».", quick);
-
-        // Серцебиття
-        heartMonitor = new HeartMonitor();
-        heartMonitor.setManaged(false);
-        Pane hrHolder = new Pane(heartMonitor);
-        hrHolder.setMinHeight(120);
-        hrHolder.setPrefHeight(120);
-        hrHolder.setMaxHeight(120);
-        heartMonitor.widthProperty().bind(hrHolder.widthProperty());
-        heartMonitor.heightProperty().bind(hrHolder.heightProperty());
-        VBox heartBlock = HoloUi.block("💓", "Серцебиття", "Лінія біжить із вашою справжньою частотою пульсу",
-                "Блакитна лінія: серце працює спокійно. Помаранчева: пульс або стрес-баланс поза нормою. "
-                        + "Високі зубці: самі удари серця.", hrHolder);
-
-        VBox right = new VBox(12, healthBlock, assistBlock, quickBlock, heartBlock);
-        right.setPadding(new Insets(0, 4, 0, 0));
-        ScrollPane rightScroll = scroll(right);
-        rightScroll.setPrefWidth(420);
-        rightScroll.setMinWidth(380);
-        rightScroll.setMaxWidth(440);
-
-        HBox columns = new HBox(14, bodyBlock, rightScroll);
-        VBox page = new VBox(10, tipBanner, columns);
-        VBox.setVgrow(columns, Priority.ALWAYS);
-        return page;
-    }
-
-    /** Якщо швидку дію зараз не можна виконати, пояснюємо чому (вкладка «Що робити» цього не видно з головного). */
-    private void addLogIfBlockedHint(Activity a) {
-        String reason = blockedReason(a);
-        if (reason != null) addLog("ℹ " + reason);
-    }
-
-    // ============ ЕКРАН 2: ПОКАЗНИКИ (по логічних групах) ============
-    private VBox metricCard(MetricType type) {
-        HoloUi.RingGauge gauge = new HoloUi.RingGauge(100);
-        gauges.put(type, gauge);
-
-        Label name = new Label(type.title);
-        name.setWrapText(true);
-        name.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 13px; -fx-font-weight: bold;");
-
-        Label chip = new Label();
-        chips.put(type, chip);
-        HoloUi.styleChip(chip, "...", HoloUi.CYAN);
-
-        Label deltaLbl = new Label();
-        deltaLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
-        deltaLabels.put(type, deltaLbl);
-
-        HBox statusRow = new HBox(8, chip, deltaLbl);
-        statusRow.setAlignment(Pos.CENTER_LEFT);
-
-        Label range = new Label("Норма: " + HoloUi.num(type.minNominal) + "–"
-                + HoloUi.num(type.maxNominal) + " " + type.unit);
-        range.setStyle("-fx-text-fill: #64748B; -fx-font-size: 10px;");
-
-        Label hint = new Label(metricHint(type));
-        hint.setWrapText(true);
-        hint.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
-
-        VBox texts = new VBox(4, name, statusRow, range, hint);
-        SpaceSources.Risk nasaRisk = SpaceSources.forMetric(type.name());
-        if (nasaRisk != null) {
-            Hyperlink src = SourceLinks.link("📎 Джерело NASA ↗", nasaRisk.source().url());
-            src.setTooltip(new Tooltip("NASA HRP: " + nasaRisk.title() + "\n" + nasaRisk.source().url()
-                    + "\nКлік відкриє сторінку в браузері"));
-            texts.getChildren().add(src);
-        }
-        HBox.setHgrow(texts, Priority.ALWAYS);
-        HBox row = new HBox(12, gauge, texts);
-        row.setAlignment(Pos.CENTER_LEFT);
-
-        VBox card = new VBox(row);
-        card.setPadding(new Insets(10));
-        card.setPrefWidth(400);
-        card.setMinWidth(320);
-        card.setStyle(CARD_STYLE);
-        return card;
-    }
-
-    private VBox metricGroup(String icon, String title, String subtitle, String help, MetricType... types) {
-        FlowPane flow = new FlowPane(12, 12);
-        for (MetricType t : types) flow.getChildren().add(metricCard(t));
-        return HoloUi.block(icon, title, subtitle, help, flow);
-    }
-
-    private Node buildMetricsScreen() {
-        healthScoreLabel.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 14px; -fx-font-weight: bold;");
+    private Node buildStatusScreen() {
+        // ---- ліва колонка: загальний стан, денні цілі, таблиця показників
+        healthScoreLabel.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 28px; -fx-font-weight: bold;");
         healthBar.setMaxWidth(Double.MAX_VALUE);
-        HBox legend = new HBox(8,
-                HoloUi.chip("● Норма", HoloUi.GREEN),
-                HoloUi.chip("● Тимчасово поза нормою", HoloUi.AMBER),
-                HoloUi.chip("● Поза нормою", HoloUi.RED));
-        legend.setAlignment(Pos.CENTER_LEFT);
-        Label legendNote = new Label("Кільце показує, де зараз ваш показник. Тонка зелена дуга зовні кільця: "
-                + "безпечна зона. Стрілки ▲▼ показують, як показник змінився після вашої останньої дії.");
-        legendNote.setWrapText(true);
-        legendNote.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
-        VBox summary = HoloUi.block("📊", "Загальна оцінка", "Скільки показників зараз у нормі",
-                "Усі 10 показників розкладено нижче на три групи. Якщо щось не в нормі, "
-                        + "відкрийте вкладку «Що робити».",
-                healthScoreLabel, healthBar, legend, legendNote);
 
-        VBox heart = metricGroup("❤️", "Серце і судини",
-                "Як працює серце і чи не перевантажена кров'яна система",
-                "Серце в невагомості працює інакше: кров не тягне вниз, тому пульс і тиск можуть «стрибати».",
-                MetricType.HEART_RATE, MetricType.HRV, MetricType.BLOOD_PRESSURE);
-        VBox breath = metricGroup("🫁", "Дихання та обмін речовин",
-                "Кисень, цукор, вода й температура: паливо для організму",
-                "Ці показники найшвидше реагують на їжу, воду, тренування та сон.",
-                MetricType.SPO2, MetricType.BLOOD_GLUCOSE, MetricType.BODY_TEMP, MetricType.HYDRATION);
-        VBox space = metricGroup("🛰️", "Вплив космосу",
-                "Те, що в польоті змінюється найсильніше: очі, радіація, кістки",
-                "Це специфічні космічні ризики. Вони повільні, тому їх важливо ловити заздалегідь.",
-                MetricType.ICP_OPTIC, MetricType.RADIATION_DOSE, MetricType.BONE_DENSITY);
-
-        dnaHelix = new HoloUi.DnaHelix();
-        Label dnaText = new Label("Так радіація б'є по ДНК. Чим більша накопичена доза, тим більше «сходинок» "
-                + "спіралі червоніють: це місця можливих пошкоджень. Доза не зникає, тому її важливо не пропустити.");
-        dnaText.setWrapText(true);
-        dnaText.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
-        HBox.setHgrow(dnaText, Priority.ALWAYS);
-        HBox dnaRow = new HBox(14, dnaHelix, dnaText);
-        dnaRow.setAlignment(Pos.CENTER_LEFT);
-        dnaRow.setPadding(new Insets(8));
-        dnaRow.setStyle(CARD_STYLE);
-        space.getChildren().add(dnaRow);
-
-        Label csaNote = new Label("На МКС близько " + Math.round(SpaceSources.NEUTRON_SHARE_ISS * 100) + "% радіації дають нейтрони. Вони особливо шкідливі, тож Канада "
-                + "розробляє прилад CANS, який вимірює їх автономно. Це дані для МКС: у польоті до Марса частка може бути іншою.");
-        csaNote.setWrapText(true);
-        csaNote.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
-        VBox csaBox = new VBox(4, csaNote, SourceLinks.row("", SpaceSources.CSA_RADIATION));
-        csaBox.setPadding(new Insets(8));
-        csaBox.setStyle(CARD_STYLE);
-        space.getChildren().add(csaBox);
-
-        VBox root = new VBox(14, summary, heart, breath, space);
-        root.setPadding(new Insets(2, 4, 2, 2));
-        return scroll(root);
-    }
-
-    // ============ ЕКРАН 3: ЩО РОБИТИ (підказки, дії по групах, вплив, журнал) ============
-    private VBox activityGroup(String icon, String title, String subtitle, String help, String... ids) {
-        VBox btns = new VBox(8);
-        for (String id : ids) {
-            Activity a = findActivity(id);
-            if (a == null) continue;
-            Button b = new Button(activityIcon(id) + a.button());
-            b.setMaxWidth(Double.MAX_VALUE);
-            b.setAlignment(Pos.CENTER_LEFT);
-            b.setWrapText(true);
-            b.setStyle("-fx-background-color: " + a.color() + "; -fx-text-fill: white; -fx-font-size: 12px; "
-                    + "-fx-padding: 8 12 8 12; -fx-background-radius: 8; -fx-cursor: hand;");
-            b.setTooltip(activityTooltip(a));
-            b.setOnAction(e -> applyActivity(a));
-            activityButtons.put(a.id(), b);
-            btns.getChildren().add(b);
-        }
-        return HoloUi.block(icon, title, subtitle, help, btns);
-    }
-
-    private Node buildActionsScreen() {
-        // Ліва колонка: підказки
-        autoPlanBtn.setMaxWidth(Double.MAX_VALUE);
-        autoPlanBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-size: 13px; "
-                + "-fx-font-weight: bold; -fx-cursor: hand; -fx-padding: 10; -fx-background-radius: 8;");
-        autoPlanBtn.managedProperty().bind(autoPlanBtn.visibleProperty());
-        autoPlanBtn.setOnAction(e -> {
-            for (String id : recommendedActionIds()) {
-                Activity a = findActivity(id);
-                if (a != null) applyActivity(a);
-            }
-        });
-        updateAutoPlanButton();
-
-        VBox left = HoloUi.block("🧭", "Що робити зараз", "Підказки лікаря-автопілота, від найважливішого",
-                "Програма сама перевіряє показники й складає список кроків. Червоні картки: терміново. "
-                        + "Кнопка «Зробити зараз» виконує крок одразу. Зелена кнопка зверху виконує все рекомендоване.",
-                autoPlanBtn, protocolContainer);
-
-        // Права колонка: ваш день і дії по групах
-        workoutLabel.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 11px;");
+        workoutLabel.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 22px;");
         workoutBar.setMaxWidth(Double.MAX_VALUE);
         workoutBar.setStyle("-fx-accent: #10B981;");
-        hydrationLabel.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 11px;");
+        hydrationLabel.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 22px;");
         hydrationBar.setMaxWidth(Double.MAX_VALUE);
         hydrationBar.setStyle("-fx-accent: #06B6D4;");
-        sleepLabel.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 11px;");
+        sleepLabel.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 22px;");
         sleepBar.setMaxWidth(Double.MAX_VALUE);
         sleepBar.setStyle("-fx-accent: #6366F1;");
-        VBox day = HoloUi.block("📅", "Ваш день", "Три щоденні цілі екіпажу",
-                "NASA радить космонавтам близько 2.5 години тренувань на добу, достатньо води й 8 годин сну. "
-                        + "Смужки показують, скільки вже зроблено.",
-                workoutLabel, workoutBar, hydrationLabel, hydrationBar, sleepLabel, sleepBar);
+        Label goalsNote = new Label("Денні цілі зараховуються лише за підтверджені дії. "
+                + "Орієнтир NASA: близько 2.5 год тренувань, достатньо води й 8 год сну на добу.");
+        goalsNote.setWrapText(true);
+        goalsNote.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 20px;");
 
-        VBox move = activityGroup("🏋️", "Рух і тренування", "Проти слабких кісток, м'язів і тиску на очі",
-                "Наведіть курсор на кнопку, щоб побачити, що вона змінить і чому.",
-                "STRENGTH", "CARDIO", "LBNP");
-        VBox food = activityGroup("💧", "Вода та їжа", "Паливо й рідина для організму",
-                "Вода потрібна серцю та голові. Їжа піднімає цукор у крові на 1-2 години.",
-                "WATER", "MEAL");
-        VBox rest = activityGroup("😴", "Відпочинок і спокій", "Щоб серце та нерви відновились",
-                "Сон і повільне дихання покращують стрес-баланс серця (HRV).",
-                "SLEEP", "BREATH");
+        VBox summary = HoloUi.block("🩺", "Загальний стан", "Скільки показників у нормі і виконання денних цілей",
+                null, healthScoreLabel, healthBar, workoutLabel, workoutBar, hydrationLabel, hydrationBar,
+                sleepLabel, sleepBar, goalsNote);
 
-        Label driftNote = new Label("Без тренувань і сеансів LBNP стан у невагомості поступово погіршується: "
-                + "тиск на очі росте, кістки слабшають, а вода потроху витрачається. "
-                + "Таблетки шукайте на екрані «Аптечка».");
-        driftNote.setWrapText(true);
-        driftNote.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
+        Label legendNote = new Label("Стрілки ▲▼ у колонці «Після дії» показують, як показник змінився після "
+                + "останньої підтвердженої дії. Наведіть курсор на назву, щоб прочитати, що це означає.");
+        legendNote.setWrapText(true);
+        legendNote.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 20px;");
+        VBox metrics = HoloUi.block("📊", "Показники", "10 вимірів організму з нормою і поточним станом",
+                null, buildMetricsTable(), legendNote);
+
+        updateHabitViews();
+        VBox left = new VBox(14, summary, metrics);
+        left.setPadding(new Insets(0, 4, 0, 0));
+
+        // ---- права колонка: що робити, ваші дії, препарати, що змінилось
+        VBox todo = HoloUi.block("🧭", "Що робити зараз", "Підказки від найважливішого",
+                null, protocolContainer);
+
+        initSessionPanel();
+        VBox doing = HoloUi.block("▶", "Ваші дії", "Розпочніть дію, виконайте її, підтвердіть",
+                null, sessionIdle, sessionActive, buildActionButtons(), buildSessionNote());
+        updateSessionView();
+
+        VBox meds = HoloUi.block("💊", "Препарати", "Дозу розраховує програма, ліміти й перерви враховано",
+                null, buildPillList());
 
         derivedLabel.setWrapText(true);
         derivedLabel.setMaxWidth(Double.MAX_VALUE);
-        derivedLabel.setStyle("-fx-text-fill: #FDE68A; -fx-font-size: 12px; -fx-background-color: #3B2A07; "
+        derivedLabel.setStyle("-fx-text-fill: #FDE68A; -fx-font-size: 24px; -fx-background-color: #3B2A07; "
                 + "-fx-padding: 8; -fx-background-radius: 6;");
         derivedLabel.managedProperty().bind(derivedLabel.visibleProperty());
         derivedLabel.setVisible(!derivedNotes.isEmpty());
-
         effectsBox.setPadding(new Insets(10));
         effectsBox.setStyle(CARD_STYLE);
         showEffectsPlaceholder();
-        VBox effectsBlock = HoloUi.block("🔬", "Як це вплинуло на здоров'я", "Після кожної дії тут з'явиться пояснення",
+        VBox effects = HoloUi.block("🔬", "Як це вплинуло на здоров'я", "Пояснення останньої підтвердженої дії",
                 null, derivedLabel, effectsBox);
 
-        Label emptyLog = new Label("Поки що нічого не зроблено.");
-        emptyLog.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
-        logBox.getChildren().add(emptyLog);
-        VBox logBlock = HoloUi.block("📜", "Журнал дій", "Останні 12 записів", null, logBox);
-
-        updateHabitViews();
-        VBox right = new VBox(12, day, move, food, rest, driftNote, effectsBlock, logBlock);
+        VBox right = new VBox(14, todo, doing, meds, effects);
         right.setPadding(new Insets(0, 4, 0, 0));
 
         GridPane grid = twoColumnGrid(14);
         RowConstraints row = new RowConstraints();
         row.setVgrow(Priority.ALWAYS);
         grid.getRowConstraints().add(row);
-        grid.add(scroll(new VBox(left)), 0, 0);
+        grid.add(scroll(left), 0, 0);
         grid.add(scroll(right), 1, 0);
         return grid;
     }
 
-    // ============ ЕКРАН 4: АПТЕЧКА ============
-    private Node buildMedkitScreen() {
-        VBox box = new VBox(12);
-        box.setPadding(new Insets(16));
-        box.setStyle(PANEL_STYLE);
+    private Node buildActionButtons() {
+        VBox btns = new VBox(8);
+        for (String id : new String[]{"STRENGTH", "CARDIO", "LBNP", "WATER", "MEAL", "BREATH", "SLEEP"}) {
+            Activity a = findActivity(id);
+            if (a == null) continue;
+            Button b = new Button(activityIcon(id) + a.button());
+            b.setMaxWidth(Double.MAX_VALUE);
+            b.setAlignment(Pos.CENTER_LEFT);
+            b.setWrapText(true);
+            b.setStyle("-fx-background-color: " + a.color() + "; -fx-text-fill: white; -fx-font-size: 24px; "
+                    + "-fx-padding: 8 12 8 12; -fx-background-radius: 8; -fx-cursor: hand;");
+            b.setTooltip(activityTooltip(a));
+            b.setOnAction(e -> beginActivity(a));
+            activityButtons.put(a.id(), b);
+            btns.getChildren().add(b);
+        }
+        return btns;
+    }
 
-        Label pillsTitle = new Label("АПТЕЧКА: ТАБЛЕТКИ (дозу рахує програма)");
-        pillsTitle.setStyle(SECTION_TITLE_STYLE);
+    /** Одноразове налаштування панелі «Виконується зараз» (таймер і кнопки підтвердження). */
+    private void initSessionPanel() {
+        sessionIdle.setWrapText(true);
+        sessionIdle.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 24px;");
+        sessionTitle.setWrapText(true);
+        sessionTitle.setStyle("-fx-text-fill: white; -fx-font-size: 26px; -fx-font-weight: bold;");
+        sessionTime.setWrapText(true);
+        sessionTime.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 24px;");
+        sessionBar.setMaxWidth(Double.MAX_VALUE);
+        sessionBar.setStyle("-fx-accent: #38BDF8;");
+        confirmBtn.setMaxWidth(Double.MAX_VALUE);
+        confirmBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-weight: bold; "
+                + "-fx-background-radius: 8; -fx-cursor: hand;");
+        confirmBtn.setOnAction(e -> confirmActivity());
+        abortBtn.setMaxWidth(Double.MAX_VALUE);
+        abortBtn.setStyle("-fx-background-color: #1E293B; -fx-text-fill: #CBD5E1; -fx-background-radius: 8; "
+                + "-fx-cursor: hand;");
+        abortBtn.setOnAction(e -> abortActivity());
+        sessionActive.getChildren().setAll(sessionTitle, sessionBar, sessionTime, confirmBtn, abortBtn);
+        sessionActive.setPadding(new Insets(10));
+        sessionActive.setStyle(CARD_STYLE);
+        sessionActive.managedProperty().bind(sessionActive.visibleProperty());
+        sessionIdle.managedProperty().bind(sessionIdle.visibleProperty());
+    }
 
-        Label pillsNote = new Label("Доза залежить від того, наскільки показник поза нормою. "
-                + "Програма не дозволяє перевищити дозу за один раз, денний максимум і мінімальну перерву між прийомами. "
-                + "Це демонстраційна модель: реальні дози призначає лікар місії.");
-        pillsNote.setWrapText(true);
-        pillsNote.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
+    private Node buildSessionNote() {
+        Label rule = new Label("Дія має тривати повний час. Лише після цього кнопка підтвердження стане активною, "
+                + "і показники зміняться. Скасовані дії, серії швидких натискань і довгі перерви потрапляють у «Журнал виконання».");
+        rule.setWrapText(true);
+        rule.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 20px;");
+        return rule;
+    }
 
-        GridPane grid = twoColumnGrid(12);
-        int i = 0;
+    private Node buildPillList() {
+        Label note = new Label("Прийом таблетки відмічається вручну: таймером його не перевірити, тому в журналі він "
+                + "позначений як «Відмічено вручну». Це демонстраційна модель: реальні дози призначає лікар місії.");
+        note.setWrapText(true);
+        note.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 20px;");
+
+        VBox list = new VBox(8);
         for (Pill p : buildPills()) {
             Label pillName = new Label(p.name());
             pillName.setWrapText(true);
-            pillName.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 12px; -fx-font-weight: bold;");
+            pillName.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 24px; -fx-font-weight: bold;");
             Label pillPurpose = new Label(p.purpose());
             pillPurpose.setWrapText(true);
-            pillPurpose.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
+            pillPurpose.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 22px;");
             Label pillStatus = new Label();
             pillStatus.setWrapText(true);
-            pillStatus.setStyle("-fx-text-fill: #FDE68A; -fx-font-size: 11px;");
+            pillStatus.setStyle("-fx-text-fill: #FDE68A; -fx-font-size: 22px;");
             Button pillBtn = new Button();
             pillBtn.setMaxWidth(Double.MAX_VALUE);
             pillBtn.setWrapText(true);
             pillBtn.setAlignment(Pos.CENTER_LEFT);
-            pillBtn.setStyle("-fx-background-color: " + p.color() + "; -fx-text-fill: white; -fx-font-size: 12px; -fx-cursor: hand;");
+            pillBtn.setStyle("-fx-background-color: " + p.color() + "; -fx-text-fill: white; -fx-font-size: 24px; -fx-cursor: hand;");
             pillBtn.setOnAction(e -> applyPill(p));
             pillLabels.put(p.id(), pillStatus);
             pillButtons.put(p.id(), pillBtn);
@@ -1840,16 +1718,129 @@ public class AegisBioApp extends Application {
             VBox row = new VBox(5, pillName, pillPurpose, pillStatus, pillBtn);
             row.setPadding(new Insets(10));
             row.setStyle(CARD_STYLE);
-            grid.add(row, i % 2, i / 2);
-            i++;
+            list.getChildren().add(row);
         }
         updatePillViews();
-
-        box.getChildren().addAll(pillsTitle, pillsNote, grid);
-        return scroll(box);
+        return new VBox(8, note, list);
     }
 
-    // ============ ЕКРАН 5: ІСТОРІЯ І ПРОГНОЗ ============
+    // ============ ЕКРАН 2: ЖУРНАЛ ВИКОНАННЯ ============
+    private static Color journalColor(ActivityJournal.Status s) {
+        return switch (s) {
+            case CONFIRMED -> HoloUi.GREEN;
+            case SELF_REPORTED -> HoloUi.CYAN;
+            case AUTO -> HoloUi.PURPLE;
+            case ABORTED -> HoloUi.AMBER;
+            case SUSPICIOUS -> HoloUi.RED;
+            case INACTIVITY -> HoloUi.ORANGE;
+        };
+    }
+
+    private Node buildJournalScreen() {
+        journalVerdict.setWrapText(true);
+        journalVerdict.setMaxWidth(Double.MAX_VALUE);
+        Label how = new Label("Як це працює: дія не змінює показники одразу. Її треба розпочати, виконати повну "
+                + "тривалість і підтвердити. Журнал показує, що з цього справді сталося, а також: "
+                + "перервані дії, серії швидких натискань (схоже на натикування кнопок) і довгі періоди без жодної "
+                + "підтвердженої дії, коли підказки вимагали дій. Те саме потрапляє у звіт для лікаря.");
+        how.setWrapText(true);
+        how.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 22px;");
+        VBox summary = HoloUi.block("🧾", "Контроль виконання", "Чи космонавт справді виконував дії",
+                null, journalVerdict, journalChips, how);
+
+        VBox entries = HoloUi.block("📋", "Записи", "Нові зверху", null, journalRows);
+
+        Label emptyLog = new Label("Поки що нічого не зроблено.");
+        emptyLog.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 22px;");
+        logBox.getChildren().add(emptyLog);
+        VBox log = HoloUi.block("📜", "Протокол подій", "Останні 12 записів", null, logBox);
+
+        refreshJournalView();
+        VBox root = new VBox(14, summary, entries, log);
+        root.setPadding(new Insets(2, 4, 2, 2));
+        return scroll(root);
+    }
+
+    private void onJournalEntry(ActivityJournal.Entry e) {
+        if (e.status().notable) addLog("⚠ [Контроль] " + e.title() + ". " + e.note());
+        refreshJournalView();
+    }
+
+    private void refreshJournalView() {
+        Map<ActivityJournal.Status, Integer> c = journal.counts();
+        journalChips.getChildren().clear();
+        for (ActivityJournal.Status s : ActivityJournal.Status.values()) {
+            journalChips.getChildren().add(HoloUi.chip(s.label + ": " + c.get(s), journalColor(s)));
+        }
+
+        int flags = c.get(ActivityJournal.Status.ABORTED) + c.get(ActivityJournal.Status.SUSPICIOUS)
+                + c.get(ActivityJournal.Status.INACTIVITY);
+        int done = c.get(ActivityJournal.Status.CONFIRMED) + c.get(ActivityJournal.Status.SELF_REPORTED);
+        String verdict;
+        String color;
+        if (journal.entries().isEmpty()) {
+            verdict = "Записів ще немає. Показники змінюються лише після виконаної і підтвердженої дії.";
+            color = "#94A3B8";
+        } else if (c.get(ActivityJournal.Status.SUSPICIOUS) > 0) {
+            verdict = "Увага: були серії швидких натискань без реального виконання дій.";
+            color = "#FCA5A5";
+        } else if (c.get(ActivityJournal.Status.INACTIVITY) > 0) {
+            verdict = "Увага: були довгі періоди без підтверджених дій, хоча підказки вимагали їх виконати.";
+            color = "#FDBA74";
+        } else if (c.get(ActivityJournal.Status.ABORTED) > 0 && done == 0) {
+            verdict = "Дії розпочинались, але жодної не завершено.";
+            color = "#FBBF24";
+        } else {
+            verdict = "Дії виконуються й підтверджуються за таймером. Підтверджено або відмічено: " + done + ".";
+            color = "#34D399";
+        }
+        journalVerdict.setText(verdict);
+        journalVerdict.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 26px; -fx-font-weight: bold;");
+        setCounter(Screen.JOURNAL, String.valueOf(flags), flags > 0);
+
+        journalRows.getChildren().clear();
+        List<ActivityJournal.Entry> list = journal.entries();
+        if (list.isEmpty()) {
+            Label empty = new Label("Поки що записів немає.");
+            empty.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 22px;");
+            journalRows.getChildren().add(empty);
+            return;
+        }
+        int shown = Math.min(list.size(), 100);
+        for (int i = 0; i < shown; i++) journalRows.getChildren().add(journalRow(list.get(i)));
+    }
+
+    private Node journalRow(ActivityJournal.Entry e) {
+        Label time = new Label(LOG_TIME.format(missionStart.plusSeconds(e.clockSec())));
+        time.setMinWidth(64);
+        time.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 22px; -fx-font-family: 'Consolas', 'Courier New', monospace;");
+
+        Label chip = HoloUi.chip(e.status().label, journalColor(e.status()));
+        chip.setMinWidth(Region.USE_PREF_SIZE);
+
+        Label title = new Label(e.title());
+        title.setWrapText(true);
+        title.setStyle("-fx-text-fill: #F8FAFC; -fx-font-size: 24px; -fx-font-weight: bold;");
+        Label note = new Label(e.note());
+        note.setWrapText(true);
+        note.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 22px;");
+        VBox texts = new VBox(2, title, note);
+        if (e.plannedSec() > 0) {
+            Label dur = new Label("Факт: " + ActivityJournal.formatSec(e.actualSec())
+                    + " з " + ActivityJournal.formatSec(e.plannedSec()));
+            dur.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 22px;");
+            texts.getChildren().add(dur);
+        }
+        HBox.setHgrow(texts, Priority.ALWAYS);
+
+        HBox row = new HBox(10, time, chip, texts);
+        row.setAlignment(Pos.TOP_LEFT);
+        row.setPadding(new Insets(8, 10, 8, 10));
+        row.setStyle(CARD_STYLE);
+        return row;
+    }
+
+    // ============ ЕКРАН 3: ІСТОРІЯ І ПРОГНОЗ ============
     private Node buildTrendsScreen() {
         VBox trend = buildTrendSection();
         VBox.setVgrow(trend, Priority.ALWAYS);
@@ -1860,19 +1851,27 @@ public class AegisBioApp extends Application {
         return box;
     }
 
-    // ============ ЕКРАН 6: МІСІЯ ============
+    // ============ ЕКРАН 4: МІСІЯ ============
     private Node buildMissionScreen() {
         Label locLabel = new Label("Де ми зараз:");
-        locLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px; -fx-font-weight: bold;");
+        locLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 22px; -fx-font-weight: bold;");
 
-        locationBox = new ComboBox<>();
-        locationBox.getItems().addAll(MissionLocation.values());
-        locationBox.setValue(currentLocation);
-        locationBox.setMaxWidth(Double.MAX_VALUE);
-        locationBox.setStyle("-fx-font-size: 12px;");
-        locationBox.setOnAction(e -> {
-            if (syncingLocation) return;
-            MissionLocation selected = locationBox.getValue();
+        locationBar = new ChoiceBar<>(List.of(MissionLocation.values()),
+                loc -> switch (loc) {
+                    case LEO -> "Навколоземна орбіта (МКС)";
+                    case MOON -> "Місячна станція Gateway";
+                    case MARS_TRANSIT -> "Політ до Марса";
+                    case SOLAR_CONJUNCTION -> "Сонячне з'єднання (блекаут)";
+                },
+                loc -> loc == MissionLocation.SOLAR_CONJUNCTION ? HoloUi.AMBER : HoloUi.CYAN,
+                loc -> switch (loc) {
+                    case LEO -> "Зв'язок із Землею майже миттєвий";
+                    case MOON -> "Сигнал іде близько 1,3 секунди";
+                    case MARS_TRANSIT -> "Сигнал іде близько 14 хвилин";
+                    case SOLAR_CONJUNCTION -> "Сонце блокує зв'язок: повна автономія";
+                });
+        locationBar.setValue(currentLocation);
+        locationBar.setOnChange(selected -> {
             if (selected == MissionLocation.SOLAR_CONJUNCTION) {
                 // Вибір «Сонячне з'єднання» запускає справжній блекаут зі стандартним таймером
                 startBlackout(BLACKOUT_DEFAULT_SEC);
@@ -1885,19 +1884,19 @@ public class AegisBioApp extends Application {
             }
         });
 
-        orbitMap = new HoloUi.OrbitMap();
-        Pane orbitHolder = HoloUi.fill(orbitMap, 230);
-        orbitHolder.setStyle("-fx-background-color: #070C16; -fx-background-radius: 10; "
-                + "-fx-border-color: #1E3A5F; -fx-border-radius: 10;");
+        missionMap = new MissionMapCanvas();
+        missionMap.setLocation(currentLocation);
+        Pane mapHolder = HoloUi.fill(missionMap, 250);
+        mapHolder.setMaxHeight(300);
 
         latencyNoticeLabel.setWrapText(true);
         latencyNoticeLabel.setMaxWidth(Double.MAX_VALUE);
         updateLatencyDisplay();
 
-        VBox locBlock = HoloUi.block("🛰️", "Де ми та зв'язок із Землею", "Оберіть місце польоту: схема покаже сигнал",
-                "Зелені точки: сигнал, що летить до Землі. Чим далі корабель, тим довше сигнал іде, "
-                        + "тому лікар на Землі відповідає пізніше. У «Сонячному з'єднанні» Сонце блокує зв'язок.",
-                locLabel, locationBox, orbitHolder, latencyNoticeLabel,
+        VBox locBlock = HoloUi.block("🛰️", "Де ми та зв'язок із Землею", "Оберіть місце польоту",
+                "Чим далі корабель, тим довше сигнал іде до Землі, тому лікар відповідає пізніше. "
+                        + "У «Сонячному з'єднанні» Сонце блокує зв'язок.",
+                locLabel, locationBar, mapHolder, latencyNoticeLabel,
                 SourceLinks.row("Основа:", SpaceSources.hazard("D").source()));
 
         Button importBtn = new Button("📂 Завантажити дані з файлу (CSV)");
@@ -1909,10 +1908,10 @@ public class AegisBioApp extends Application {
         Button reportBtn = new Button("💾 Зберегти звіт (TXT)");
         reportBtn.setStyle("-fx-background-color: #334155; -fx-text-fill: white; -fx-font-weight: bold; "
                 + "-fx-cursor: hand; -fx-background-radius: 8;");
-        reportBtn.setTooltip(new Tooltip("Записує у файл усі показники й поточні підказки: можна передати лікарю."));
+        reportBtn.setTooltip(new Tooltip("Записує у файл показники, підказки та журнал виконання: можна передати лікарю."));
         reportBtn.setOnAction(e -> saveReport(mainStage));
 
-        Button blackoutBtn = new Button("🛡️ Режим Блекауту");
+        Button blackoutBtn = new Button("🛡️ Режим без зв'язку");
         blackoutBtn.setStyle("-fx-background-color: #581C87; -fx-text-fill: white; -fx-font-weight: bold; "
                 + "-fx-cursor: hand; -fx-background-radius: 8;");
         blackoutBtn.setTooltip(new Tooltip("Коли зв'язку немає, штучний інтелект сам піклується про екіпаж."));
@@ -1924,37 +1923,39 @@ public class AegisBioApp extends Application {
                 "Імпорт читає готові дані з файлу. Звіт можна зберегти й показати лікарю. "
                         + "Блекаут: режим, коли Земля недоступна.", dataRow);
 
-        Button mindCareBtn = new Button("🧠 Психологічна підтримка (MindCare)");
+        Button mindCareBtn = new Button("Психологічна підтримка");
+        mindCareBtn.setGraphic(HoloUi.iconMind());
+        mindCareBtn.setGraphicTextGap(8);
         mindCareBtn.setStyle("-fx-background-color: #0D9488; -fx-text-fill: white; -fx-font-weight: bold; "
                 + "-fx-cursor: hand; -fx-background-radius: 8;");
         mindCareBtn.setTooltip(new Tooltip("Дихання, чек-ін настрою, вправи й аварійний сигнал SOS."));
         mindCareBtn.setOnAction(e -> openMindCare());
 
-        VBox mindBlock = HoloUi.block("🧠", "Психологічна підтримка", "Дихання, настрій і допомога колезі",
-                "Окреме вікно: дихальна вправа 4-4-4-4, чек-ін настрою, вправа «5-4-3-2-1», щоденні квести "
+        VBox mindBlock = HoloUi.block(HoloUi.iconMind(), "Психологічна підтримка", "Дихання, настрій і допомога колезі",
+                "Окрема вкладка: дихальна вправа 4-4-4-4, чек-ін настрою, вправа «5-4-3-2-1», щоденні квести "
                         + "й кнопка SOS. Усе працює без зв'язку із Землею. Це не заміна психолога.",
                 mindCareBtn);
 
-        Button sansTrigger = new Button("👁 Тест: тиск на очі");
-        sansTrigger.setStyle("-fx-background-color: #7C3AED; -fx-text-fill: white; -fx-font-size: 12px; "
+        Button sansTrigger = new Button("👁 Демо: тиск на очі");
+        sansTrigger.setStyle("-fx-background-color: #7C3AED; -fx-text-fill: white; -fx-font-size: 24px; "
                 + "-fx-cursor: hand; -fx-background-radius: 8;");
         sansTrigger.setOnAction(e -> simulateSansDegradation());
 
-        Button radiationSpike = new Button("☀ Тест: сонячний спалах");
-        radiationSpike.setStyle("-fx-background-color: #EA580C; -fx-text-fill: white; -fx-font-size: 12px; "
+        Button radiationSpike = new Button("☀ Демо: сонячний спалах");
+        radiationSpike.setStyle("-fx-background-color: #EA580C; -fx-text-fill: white; -fx-font-size: 24px; "
                 + "-fx-cursor: hand; -fx-background-radius: 8;");
         radiationSpike.setOnAction(e -> simulateRadiationEvent());
 
         Button resetBtn = new Button("↺ Скинути до норми");
-        resetBtn.setStyle("-fx-background-color: #1E293B; -fx-text-fill: #CBD5E1; -fx-font-size: 12px; "
+        resetBtn.setStyle("-fx-background-color: #1E293B; -fx-text-fill: #CBD5E1; -fx-font-size: 24px; "
                 + "-fx-cursor: hand; -fx-background-radius: 8;");
         resetBtn.setOnAction(e -> resetAll());
 
         FlowPane testRow = new FlowPane(10, 10);
         testRow.getChildren().addAll(sansTrigger, radiationSpike, resetBtn);
-        VBox testBlock = HoloUi.block("🧪", "Тестові ситуації", "Щоб побачити, як працюють підказки",
+        VBox testBlock = HoloUi.block("🧪", "Демо-ситуації", "Лише для перевірки програми",
                 "Кнопки створюють штучну проблему (наприклад, сонячний спалах). "
-                        + "Після цього перейдіть на «Головний» або «Що робити» і подивіться, як реагує програма.",
+                        + "Після цього перейдіть на «Стан і дії» і подивіться, як реагує програма.",
                 testRow);
 
         VBox box = new VBox(14, locBlock, dataBlock, mindBlock, testBlock);
@@ -1964,29 +1965,28 @@ public class AegisBioApp extends Application {
 
     private Node buildCrewMeshScreen() {
         crewPanel = new CrewMeshPanel(CrewMeshNetwork.createDefaultCrew(), this::addLog, count -> {
-            Label badge = navBadges.get(Screen.MESH_CREW);
-            if (badge != null) {
-                badge.setText("🚨 " + count);
-                badge.setVisible(count > 0);
-            }
+            setCounter(Screen.MESH_CREW, "🚨 " + count, count > 0);
         });
         return scroll(crewPanel);
     }
 
     // ============ НИЖНІЙ РЯДОК ============
-    private HBox buildBottomStatusBar() {
-        HBox status = new HBox(20);
+    private FlowPane buildBottomStatusBar() {
+        FlowPane status = new FlowPane(28, 4);
         status.setPadding(new Insets(8, 24, 8, 24));
         status.setAlignment(Pos.CENTER_LEFT);
         status.setStyle("-fx-background-color: #0B111E; -fx-border-color: #1E293B; -fx-border-width: 1 0 0 0;");
 
-        Label crewStatus = new Label("● КОМАНДИР: М. ВОДКО. Автономний режим: рішення ви приймаєте самі");
-        crewStatus.setStyle("-fx-text-fill: #10B981; -fx-font-size: 11px; -fx-font-weight: bold;");
+        Label crewStatus = new Label("● Командир: М. Водко. Автономний режим");
+        crewStatus.setStyle("-fx-text-fill: #10B981; -fx-font-size: 20px; -fx-font-weight: bold;");
+        crewStatus.setMinWidth(Region.USE_PREF_SIZE);
 
-        Label linkStatus = new Label("Зв'язок із Землею (Х'юстон): повідомлення йдуть із затримкою");
-        linkStatus.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
+        Label linkStatus = new Label("Зв'язок із Землею (Х'юстон): із затримкою");
+        linkStatus.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 20px;");
+        linkStatus.setMinWidth(Region.USE_PREF_SIZE);
 
-        blackoutStatusLabel.setStyle("-fx-text-fill: #C084FC; -fx-font-size: 11px; -fx-font-weight: bold;");
+        blackoutStatusLabel.setStyle("-fx-text-fill: #C084FC; -fx-font-size: 20px; -fx-font-weight: bold;");
+        blackoutStatusLabel.setMinWidth(Region.USE_PREF_SIZE);
         blackoutStatusLabel.setVisible(false);
         blackoutStatusLabel.setManaged(false);
 
@@ -2000,374 +2000,6 @@ public class AegisBioApp extends Application {
         bigClockLabel.setText(LOG_TIME.format(now));
         simClockLabel.setText(String.format(Locale.US, "Доба місії %d  |  симуляція: %d д %02d:%02d:%02d",
                 142 + clockSec / 86400, clockSec / 86400, (clockSec / 3600) % 24, (clockSec / 60) % 60, clockSec % 60));
-    }
-
-    // ============ МАЛЮВАННЯ ТІЛА ============
-    private void glowDot(GraphicsContext gc, double cx, double cy, double size, Color color) {
-        gc.setFill(Color.color(color.getRed(), color.getGreen(), color.getBlue(), 0.18));
-        double halo = size * 2.6;
-        gc.fillOval(cx - halo / 2, cy - halo / 2, halo, halo);
-        gc.setFill(color);
-        gc.fillOval(cx - size / 2, cy - size / 2, size, size);
-    }
-
-    private void drawTag(GraphicsContext gc, String text, double x, double y, Color color) {
-        double textWidth = text.length() * 6.6;
-        gc.setFill(Color.rgb(8, 12, 20, 0.8));
-        gc.fillRect(x - 3, y - 11, textWidth + 6, 15);
-        gc.setFill(color);
-        gc.fillText(text, x, y);
-    }
-
-    /** Контур частини скафандра: прозора заливка + світіння + чітка лінія. */
-    private void drawPart(GraphicsContext gc, double[] xs, double[] ys, Color fill, Color stroke) {
-        gc.setFill(fill);
-        gc.fillPolygon(xs, ys, xs.length);
-        gc.setStroke(Color.color(stroke.getRed(), stroke.getGreen(), stroke.getBlue(), 0.10));
-        gc.setLineWidth(6);
-        gc.strokePolygon(xs, ys, xs.length);
-        gc.setStroke(stroke);
-        gc.setLineWidth(1.5);
-        gc.strokePolygon(xs, ys, xs.length);
-    }
-
-    private void drawRoundPart(GraphicsContext gc, double x, double y, double w, double h, double r,
-                               Color fill, Color stroke) {
-        gc.setFill(fill);
-        gc.fillRoundRect(x, y, w, h, r, r);
-        gc.setStroke(stroke);
-        gc.setLineWidth(1.5);
-        gc.strokeRoundRect(x, y, w, h, r, r);
-    }
-
-    /** Колір сяйва голограми залежить від загального стану. */
-    private Color auraColor() {
-        if (healthScoreValue >= 80) return Color.rgb(56, 189, 248);
-        if (healthScoreValue >= 50) return Color.rgb(245, 158, 11);
-        return Color.rgb(239, 68, 68);
-    }
-
-    /** Кути рамки HUD. */
-    private void drawBrackets(GraphicsContext gc, double w, double h, Color c) {
-        double m = 8, L = 22;
-        gc.setStroke(c);
-        gc.setLineWidth(2);
-        gc.strokeLine(m, m, m + L, m);
-        gc.strokeLine(m, m, m, m + L);
-        gc.strokeLine(w - m, m, w - m - L, m);
-        gc.strokeLine(w - m, m, w - m, m + L);
-        gc.strokeLine(m, h - m, m + L, h - m);
-        gc.strokeLine(m, h - m, m, h - m - L);
-        gc.strokeLine(w - m, h - m, w - m - L, h - m);
-        gc.strokeLine(w - m, h - m, w - m, h - m - L);
-    }
-
-    /** Малює голографічну сцену: сяйво, проектор, промінь, кільця, частинки, космонавта і сканер. */
-    private void drawHolographicBody(GraphicsContext gc) {
-        double w = bodyHudCanvas.getWidth();
-        double h = bodyHudCanvas.getHeight();
-        if (w < 10 || h < 10) return;
-        double t = animationPulse / 3.0;
-        Color aura = auraColor();
-        gc.clearRect(0, 0, w, h);
-        gc.setLineDashes((double[]) null);
-        gc.setGlobalAlpha(1.0);
-
-        double s = Math.min(w / BODY_W, h / BODY_H);
-        double ox = (w - BODY_W * s) / 2;
-        double oy = (h - BODY_H * s) / 2;
-        bodyScale = s;
-        bodyOffX = ox;
-        bodyOffY = oy;
-        double midX = w / 2;
-        double footY = oy + (62 + 392) * s;
-
-        // 1. М'яке сяйво за спиною
-        gc.setFill(new RadialGradient(0, 0, midX, h * 0.5, Math.min(w, h) * 0.65, false, CycleMethod.NO_CYCLE,
-                new Stop(0, HoloUi.alpha(aura, 0.16)), new Stop(1, HoloUi.alpha(aura, 0.0))));
-        gc.fillRect(0, 0, w, h);
-
-        // 2. Сітка сканера
-        gc.setStroke(Color.rgb(30, 41, 59, 0.35));
-        gc.setLineWidth(1);
-        for (double y = 0; y < h; y += 30) gc.strokeLine(0, y, w, y);
-        for (double x = 0; x < w; x += 30) gc.strokeLine(x, 0, x, h);
-
-        // 3. Промінь проектора від майданчика вгору
-        double padRx = 120 * s;
-        gc.setFill(new LinearGradient(0, 1, 0, 0, true, CycleMethod.NO_CYCLE,
-                new Stop(0, HoloUi.alpha(aura, 0.20)), new Stop(1, HoloUi.alpha(aura, 0.0))));
-        gc.fillPolygon(
-                new double[]{midX - padRx * 0.8, midX + padRx * 0.8, midX + padRx * 0.5, midX - padRx * 0.5},
-                new double[]{footY, footY, oy, oy}, 4);
-
-        // 4. Майданчик проектора: кільця, що пульсують
-        for (int k = 0; k < 3; k++) {
-            double ph = (t * 0.5 + k / 3.0) % 1.0;
-            double rx = padRx * (0.45 + 0.75 * ph);
-            gc.setStroke(HoloUi.alpha(aura, 0.55 * (1 - ph)));
-            gc.setLineWidth(1.5);
-            gc.strokeOval(midX - rx, footY - rx * 0.2 + 4 * s, rx * 2, rx * 0.4);
-        }
-        gc.setStroke(HoloUi.alpha(aura, 0.7));
-        gc.setLineWidth(2);
-        gc.strokeOval(midX - padRx * 0.45, footY - padRx * 0.09 + 4 * s, padRx * 0.9, padRx * 0.18);
-
-        // 5. Кільця навколо тіла (як гіроскоп)
-        double ringCx = ox + (BODY_W / 2) * s;
-        double ringCy = oy + (62 + 190) * s;
-        for (int k = 0; k < 2; k++) {
-            gc.save();
-            gc.translate(ringCx, ringCy);
-            gc.rotate(k == 0 ? 14 : -14);
-            double rx = (150 + 22 * k) * s;
-            double ry = rx * (0.16 + 0.05 * Math.sin(t * 0.8 + k * 2));
-            gc.setStroke(HoloUi.alpha(aura, 0.30));
-            gc.setLineWidth(1.2);
-            gc.strokeOval(-rx, -ry, 2 * rx, 2 * ry);
-            double a = t * (k == 0 ? 0.9 : -0.7);
-            gc.setFill(HoloUi.alpha(aura, 0.95));
-            gc.fillOval(rx * Math.cos(a) - 3, ry * Math.sin(a) - 3, 6, 6);
-            gc.restore();
-        }
-
-        // 6. Космонавт (легке мерехтіння, як у справжньої голограми)
-        gc.setGlobalAlpha(0.93 + 0.07 * Math.sin(animationPulse * 23));
-        gc.save();
-        gc.translate(ox, oy);
-        gc.scale(s, s);
-        drawBodyLogical(gc);
-        gc.restore();
-        gc.setGlobalAlpha(1.0);
-
-        // 7. Частинки світла, що летять угору
-        for (int i = 0; i < 28; i++) {
-            double px = midX + ((i * 53) % 100 - 50) / 50.0 * (BODY_W * 0.42) * s;
-            double life = (t * (0.10 + (i % 5) * 0.03) + i * 0.137) % 1.0;
-            double py = footY - life * (footY - 4);
-            double sz = 1.5 + (i % 3);
-            gc.setFill(HoloUi.alpha(aura, Math.sin(life * Math.PI) * 0.7));
-            gc.fillOval(px - sz / 2, py - sz / 2, sz, sz);
-        }
-
-        // 8. Промінь сканера з шлейфом
-        double scanY = (animationPulse * 25) % h;
-        gc.setFill(new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
-                new Stop(0, HoloUi.alpha(aura, 0.0)), new Stop(1, HoloUi.alpha(aura, 0.22))));
-        gc.fillRect(0, scanY - 46, w, 46);
-        gc.setStroke(Color.rgb(186, 230, 253, 0.65));
-        gc.setLineWidth(1);
-        gc.strokeLine(0, scanY, w, scanY);
-
-        // 9. Рамка HUD і написи
-        drawBrackets(gc, w, h, HoloUi.alpha(aura, 0.8));
-        gc.setFont(Font.font("Consolas", 10));
-        gc.setFill(HoloUi.alpha(aura, 0.9));
-        gc.fillText("◈ ГОЛОГРАФІЧНЕ СКАНУВАННЯ", 18, 24);
-        boolean blink = Math.sin(animationPulse * 3) > 0;
-        gc.setFill(blink ? Color.rgb(239, 68, 68, 0.95) : Color.rgb(239, 68, 68, 0.3));
-        gc.fillText("● НАЖИВО", w - 78, 24);
-        gc.setFill(Color.rgb(148, 163, 184, 0.8));
-        gc.fillText("Наведіть курсор на світну точку", 18, h - 16);
-    }
-
-    /** Малюнок космонавта в логічних координатах BODY_W x BODY_H. */
-    private void drawBodyLogical(GraphicsContext gc) {
-        double w = BODY_W;
-        double h = BODY_H;
-        gc.setFont(Font.font("Consolas", 11));
-
-        double cx = w / 2;
-        double hy = 62; // центр голови
-
-        Color fill = Color.rgb(56, 189, 248, 0.10);
-        Color line = Color.rgb(56, 189, 248, 0.75);
-        Color inner = Color.rgb(186, 230, 253, 0.25);
-
-        // Ранцевий блок життєзабезпечення (за спиною), пунктиром
-        gc.setFill(Color.rgb(56, 189, 248, 0.05));
-        gc.fillRoundRect(cx - 60, hy + 44, 120, 108, 16, 16);
-        gc.setStroke(Color.rgb(56, 189, 248, 0.35));
-        gc.setLineWidth(1.2);
-        gc.setLineDashes(5, 5);
-        gc.strokeRoundRect(cx - 60, hy + 44, 120, 108, 16, 16);
-        gc.setLineDashes((double[]) null);
-
-        // Ноги
-        drawPart(gc,
-                new double[]{cx - 38, cx - 2, cx - 8, cx - 12, cx - 44, cx - 46},
-                new double[]{hy + 185, hy + 185, hy + 300, hy + 372, hy + 372, hy + 300}, fill, line);
-        drawPart(gc,
-                new double[]{cx + 38, cx + 2, cx + 8, cx + 12, cx + 44, cx + 46},
-                new double[]{hy + 185, hy + 185, hy + 300, hy + 372, hy + 372, hy + 300}, fill, line);
-        // Черевики
-        drawRoundPart(gc, cx - 52, hy + 370, 44, 22, 10, fill, line);
-        drawRoundPart(gc, cx + 8, hy + 370, 44, 22, 10, fill, line);
-
-        // Руки (рукави) і рукавички
-        drawPart(gc,
-                new double[]{cx - 50, cx - 68, cx - 96, cx - 76},
-                new double[]{hy + 44, hy + 48, hy + 160, hy + 166}, fill, line);
-        drawPart(gc,
-                new double[]{cx + 50, cx + 68, cx + 96, cx + 76},
-                new double[]{hy + 44, hy + 48, hy + 160, hy + 166}, fill, line);
-        gc.setFill(fill);
-        gc.setStroke(line);
-        gc.setLineWidth(1.5);
-        gc.fillOval(cx - 97, hy + 160, 24, 26);
-        gc.strokeOval(cx - 97, hy + 160, 24, 26);
-        gc.fillOval(cx + 73, hy + 160, 24, 26);
-        gc.strokeOval(cx + 73, hy + 160, 24, 26);
-
-        // Тулуб скафандра
-        drawPart(gc,
-                new double[]{cx - 50, cx + 50, cx + 44, cx + 38, cx - 38, cx - 44},
-                new double[]{hy + 42, hy + 42, hy + 120, hy + 185, hy + 185, hy + 120}, fill, line);
-        // Пояс і панель керування на грудях
-        drawRoundPart(gc, cx - 39, hy + 176, 78, 9, 4, fill, line);
-        drawRoundPart(gc, cx - 17, hy + 92, 34, 18, 4, Color.rgb(56, 189, 248, 0.06), line);
-
-        // Внутрішній «рентген»: ребра, хребет, кістки ніг
-        gc.setStroke(inner);
-        gc.setLineWidth(1.2);
-        for (int i = 0; i < 4; i++) {
-            gc.strokeArc(cx - 26, hy + 50 + i * 9, 52, 26, 180, 180, ArcType.OPEN);
-        }
-        for (int i = 0; i < 13; i++) {
-            double vy = hy + 48 + i * 10;
-            gc.strokeLine(cx - 3, vy, cx + 3, vy);
-        }
-        gc.strokeLine(cx - 26, hy + 200, cx - 26, hy + 362);
-        gc.strokeLine(cx + 26, hy + 200, cx + 26, hy + 362);
-
-        // Шийне кільце
-        gc.setFill(fill);
-        gc.setStroke(line);
-        gc.setLineWidth(1.5);
-        gc.fillOval(cx - 22, hy + 30, 44, 14);
-        gc.strokeOval(cx - 22, hy + 30, 44, 14);
-
-        // Шолом
-        gc.setFill(Color.rgb(56, 189, 248, 0.07));
-        gc.fillOval(cx - 36, hy - 36, 72, 72);
-        gc.setStroke(Color.rgb(56, 189, 248, 0.10));
-        gc.setLineWidth(6);
-        gc.strokeOval(cx - 36, hy - 36, 72, 72);
-        gc.setStroke(line);
-        gc.setLineWidth(1.5);
-        gc.strokeOval(cx - 36, hy - 36, 72, 72);
-
-        // Скло шолома (візор) з градієнтом і відблиском
-        gc.setFill(new LinearGradient(0, 0, 1, 1, true, CycleMethod.NO_CYCLE,
-                new Stop(0, Color.rgb(125, 211, 252, 0.35)),
-                new Stop(1, Color.rgb(14, 116, 144, 0.10))));
-        gc.fillOval(cx - 25, hy - 20, 50, 40);
-        gc.setStroke(Color.rgb(125, 211, 252, 0.8));
-        gc.setLineWidth(1.2);
-        gc.strokeOval(cx - 25, hy - 20, 50, 40);
-        gc.setStroke(Color.rgb(255, 255, 255, 0.45));
-        gc.setLineWidth(2);
-        gc.strokeArc(cx - 20, hy - 16, 40, 32, 110, 50, ArcType.OPEN);
-
-        double pulse = 6 + 2 * Math.sin(animationPulse);
-        double boxL = 20;        // ліві виноски
-        double boxR = cx + 130;  // праві виноски
-
-        // Очі (видно крізь візор)
-        double icp = currentTelemetry.get(MetricType.ICP_OPTIC);
-        Color sansColor = icp > 18.0 ? Color.rgb(239, 68, 68, 0.95) : Color.rgb(16, 185, 129, 0.9);
-        glowDot(gc, cx - 8, hy - 3, pulse, sansColor);
-        glowDot(gc, cx + 8, hy - 3, pulse, sansColor);
-        drawCallout(gc, cx + 8, hy - 3, boxR, 18, true, "Тиск на зоровий нерв",
-                String.format(Locale.US, "%.1f мм рт.ст.", icp), sansColor);
-
-        // Кисень (легені)
-        double spo2 = currentTelemetry.get(MetricType.SPO2);
-        Color spoColor = spo2 < 96 ? Color.rgb(249, 115, 22, 0.95) : Color.rgb(34, 211, 238, 0.9);
-        glowDot(gc, cx + 16, hy + 68, pulse, spoColor);
-        drawCallout(gc, cx + 16, hy + 68, boxR, 92, true, "Кисень у крові (SpO2)",
-                String.format(Locale.US, "%.1f %%", spo2), spoColor);
-
-        // Хребет
-        Color spineColor = Color.rgb(168, 85, 247, 0.9);
-        glowDot(gc, cx, hy + 135, pulse, spineColor);
-        drawCallout(gc, cx, hy + 135, boxR, 166, true, "Хребет у невагомості",
-                String.format(Locale.US, "+%.1f см", SPINE_ELONGATION_CM), spineColor);
-
-        // Радіація
-        double rad = currentTelemetry.get(MetricType.RADIATION_DOSE);
-        Color radColor = rad > 100 ? Color.rgb(239, 68, 68, 0.95) : Color.rgb(16, 185, 129, 0.9);
-        glowDot(gc, cx + 40, hy + 150, pulse, radColor);
-        drawCallout(gc, cx + 40, hy + 150, boxR, 240, true, "Доза радіації",
-                String.format(Locale.US, "%.1f мЗв", rad), radColor);
-
-        // Серце: б'ється з частотою пульсу
-        double hr = currentTelemetry.get(MetricType.HEART_RATE);
-        double hrv = currentTelemetry.get(MetricType.HRV);
-        boolean heartWarn = hr > 100 || hr < 55 || hrv < 40;
-        Color heartColor = heartWarn ? Color.rgb(249, 115, 22, 0.95) : Color.rgb(56, 189, 248, 0.9);
-        double beat = 0.5 + 0.5 * Math.sin(heartPhase);
-        glowDot(gc, cx, hy + 75, 5 + 6 * beat * beat, heartColor);
-        drawCallout(gc, cx, hy + 75, boxL, 110, false, "Пульс",
-                String.format(Locale.US, "%.0f уд/хв", hr), heartColor);
-
-        // Стрес-баланс серця
-        Color hrvColor = hrv < 40 ? Color.rgb(249, 115, 22, 0.95) : Color.rgb(56, 189, 248, 0.9);
-        glowDot(gc, cx - 14, hy + 100, pulse, hrvColor);
-        drawCallout(gc, cx - 14, hy + 100, boxL, 156, false, "Стрес-баланс серця (HRV)",
-                String.format(Locale.US, "%.1f мс", hrv), hrvColor);
-
-        // Вода
-        double hyd = currentTelemetry.get(MetricType.HYDRATION);
-        Color hydColor = hyd < 90 ? Color.rgb(249, 115, 22, 0.95) : Color.rgb(34, 211, 238, 0.9);
-        glowDot(gc, cx, hy + 160, pulse, hydColor);
-        drawCallout(gc, cx, hy + 160, boxL, 202, false, "Запас води",
-                String.format(Locale.US, "%.0f %%", hyd), hydColor);
-
-        // Кістки ніг
-        double bone = currentTelemetry.get(MetricType.BONE_DENSITY);
-        Color boneColor = bone < 97 ? Color.rgb(239, 68, 68, 0.95) : Color.rgb(234, 179, 8, 0.9);
-        glowDot(gc, cx - 26, hy + 285, pulse, boneColor);
-        glowDot(gc, cx + 26, hy + 285, pulse, boneColor);
-        drawCallout(gc, cx - 26, hy + 285, boxL, 330, false, "Міцність кісток",
-                String.format(Locale.US, "%.1f %%", bone), boneColor);
-
-        // Підсвітка точки, на яку навели курсор
-        if (hoverHot != null) {
-            double r = 16 + 3 * Math.sin(animationPulse * 2);
-            gc.setStroke(Color.WHITE);
-            gc.setLineWidth(1.5);
-            gc.setLineDashes(4, 4);
-            gc.strokeOval(hoverHot.x() - r, hoverHot.y() - r, 2 * r, 2 * r);
-            gc.setLineDashes((double[]) null);
-        }
-    }
-
-    /** Виноска: лінія від точки на тілі до підписаної рамки збоку. */
-    private void drawCallout(GraphicsContext gc, double dotX, double dotY, double boxX, double boxY,
-                             boolean boxOnRight, String title, String value, Color color) {
-        double bw = 170, bh = 38;
-        double edgeX = boxOnRight ? boxX : boxX + bw;
-        double edgeY = boxY + bh / 2;
-
-        gc.setLineDashes((double[]) null);
-        gc.setStroke(Color.color(color.getRed(), color.getGreen(), color.getBlue(), 0.6));
-        gc.setLineWidth(1.2);
-        gc.strokeLine(dotX, dotY, edgeX, edgeY);
-
-        gc.setFill(Color.rgb(8, 12, 20, 0.88));
-        gc.fillRoundRect(boxX, boxY, bw, bh, 8, 8);
-        gc.setStroke(color);
-        gc.setLineWidth(1.2);
-        gc.strokeRoundRect(boxX, boxY, bw, bh, 8, 8);
-
-        gc.setFill(Color.rgb(148, 163, 184));
-        gc.setFont(Font.font("Consolas", 10));
-        gc.fillText(title, boxX + 8, boxY + 14);
-        gc.setFill(color);
-        gc.setFont(Font.font("Consolas", 14));
-        gc.fillText(value, boxX + 8, boxY + 31);
-        gc.setFont(Font.font("Consolas", 11));
     }
 
     // ============ ПІДКАЗКИ ============
@@ -2427,7 +2059,7 @@ public class AegisBioApp extends Application {
         if (currentTelemetry.get(MetricType.BONE_DENSITY) < 97.0) {
             if (countermeasureMinutes >= WORKOUT_MAX_MIN) {
                 activeProtocols.add(new ClinicalProtocol("Кістки", "Кістки втрачають кальцій",
-                        "Денну норму тренувань уже виконано. Продовжите завтра. Можна прийняти вітамін D (екран «Аптечка»).",
+                        "Денну норму тренувань уже виконано. Продовжите завтра. Можна прийняти вітамін D (блок «Препарати»).",
                         "MEDIUM"));
             } else {
                 activeProtocols.add(new ClinicalProtocol("Кістки", "Кістки втрачають кальцій",
@@ -2513,21 +2145,12 @@ public class AegisBioApp extends Application {
         Label title = new Label("ІСТОРІЯ І ПРОГНОЗ");
         title.setStyle(SECTION_TITLE_STYLE);
 
-        ComboBox<MetricType> pick = new ComboBox<>();
-        pick.getItems().addAll(MetricType.values());
+        ChoiceBar<MetricType> pick = new ChoiceBar<>(List.of(MetricType.values()), this::shortMetricName,
+                t -> HoloUi.CYAN, t -> t.title);
         pick.setValue(chartMetric);
-        pick.setMaxWidth(Double.MAX_VALUE);
-        pick.setStyle("-fx-font-size: 12px;");
-        StringConverter<MetricType> conv = new StringConverter<>() {
-            @Override public String toString(MetricType t) { return t == null ? "" : t.title; }
-            @Override public MetricType fromString(String s) { return null; }
-        };
-        pick.setConverter(conv);
-        pick.setOnAction(e -> {
-            if (pick.getValue() != null) {
-                chartMetric = pick.getValue();
-                updateTrendChart();
-            }
+        pick.setOnChange(t -> {
+            chartMetric = t;
+            updateTrendChart();
         });
 
         NumberAxis xAxis = new NumberAxis();
@@ -2552,19 +2175,35 @@ public class AegisBioApp extends Application {
 
         forecastLabel.setWrapText(true);
         forecastLabel.setMaxWidth(Double.MAX_VALUE);
-        forecastLabel.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 11px; "
+        forecastLabel.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 22px; "
                 + "-fx-background-color: #151F32; -fx-padding: 8; -fx-background-radius: 4;");
 
         Label legend = new Label("Блакитна лінія: ваш показник. Зелений пунктир: межі норми. "
                 + "Прогноз не враховує тимчасових піків після тренувань.");
         legend.setWrapText(true);
-        legend.setStyle("-fx-text-fill: #64748B; -fx-font-size: 10px;");
+        legend.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 20px;");
 
         Label pickCaption = new Label("Оберіть показник, щоб побачити його графік:");
-        pickCaption.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px;");
+        pickCaption.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 22px;");
         sec.getChildren().addAll(pickCaption, pick, trendChart, forecastLabel, legend);
         updateTrendChart();
         return sec;
+    }
+
+    /** Короткі назви для кнопок вибору показника. */
+    private String shortMetricName(MetricType t) {
+        return switch (t) {
+            case HEART_RATE -> "Пульс";
+            case HRV -> "Стрес-баланс (HRV)";
+            case BLOOD_PRESSURE -> "Тиск крові";
+            case BLOOD_GLUCOSE -> "Цукор";
+            case BODY_TEMP -> "Температура";
+            case SPO2 -> "Кисень (SpO2)";
+            case ICP_OPTIC -> "Зоровий нерв (SANS)";
+            case RADIATION_DOSE -> "Радіація";
+            case HYDRATION -> "Вода";
+            case BONE_DENSITY -> "Кістки";
+        };
     }
 
     private void updateTrendChart() {
@@ -2646,27 +2285,29 @@ public class AegisBioApp extends Application {
             card.setStyle(cardStyle(p.urgency()));
 
             Label category = new Label(urgencyLabel(p.urgency()) + "  |  " + p.hazardCategory());
-            category.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 11px; -fx-font-weight: bold;");
+            category.setStyle("-fx-text-fill: #CBD5E1; -fx-font-size: 22px; -fx-font-weight: bold;");
 
             Label title = new Label(p.title());
             title.setWrapText(true);
-            title.setStyle("-fx-text-fill: white; -fx-font-size: 13px; -fx-font-weight: bold;");
+            title.setStyle("-fx-text-fill: white; -fx-font-size: 26px; -fx-font-weight: bold;");
 
             Label action = new Label("Що робити:\n" + p.action());
             action.setWrapText(true);
-            action.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 12px;");
+            action.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 24px;");
 
             card.getChildren().addAll(category, title, action);
 
             // Кнопка «Зробити зараз» прямо на підказці
             Activity act = findActivity(p.actionId());
             if (act != null && blockedReason(act) == null) {
-                Button doIt = new Button("▶ Зробити зараз: " + act.button());
+                Button doIt = new Button("▶ Почати: " + act.button() + " ("
+                        + ActivityJournal.formatSec(activityDurationSec(act.id())) + ")");
+                doIt.setDisable(journal.hasActive());
                 doIt.setWrapText(true);
                 doIt.setMaxWidth(Double.MAX_VALUE);
                 doIt.setStyle("-fx-background-color: " + act.color()
                         + "; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
-                doIt.setOnAction(e -> applyActivity(act));
+                doIt.setOnAction(e -> beginActivity(act));
                 card.getChildren().add(doIt);
             }
 
@@ -2706,12 +2347,13 @@ public class AegisBioApp extends Application {
             case MOON -> "Ви біля Місяця. Сигнал до Землі йде близько 1.3 секунди. "
                     + "Лікар на Землі відповідає майже одразу.";
             case MARS_TRANSIT -> "Ви летите до Марса. Сигнал до Землі йде 14 хвилин, "
-                    + "тому лікар не відповість швидко. Дійте за підказками на екрані «Що робити».";
+                    + "тому лікар не відповість швидко. Дійте за підказками на екрані «Стан і дії».";
             case SOLAR_CONJUNCTION -> "⚠️ Сонячне з'єднання (Блекаут). Сигнал заблокований Сонцем. "
-                    + "Зв'язок відсутній (0 bps). Повна автономія екіпажу!";
+                    + "Зв'язку із Землею немає. Екіпаж діє самостійно.";
         };
         latencyNoticeLabel.setText(desc);
-        latencyNoticeLabel.setStyle("-fx-text-fill: #F59E0B; -fx-font-size: 12px; -fx-background-color: #261E0A; -fx-padding: 8; -fx-background-radius: 4;");
+        if (missionMap != null) missionMap.setLocation(currentLocation);
+        latencyNoticeLabel.setStyle("-fx-text-fill: #F59E0B; -fx-font-size: 24px; -fx-background-color: #261E0A; -fx-padding: 8; -fx-background-radius: 4;");
     }
 
     // ============ ОНОВЛЕННЯ ЕКРАНА ============
@@ -2722,7 +2364,7 @@ public class AegisBioApp extends Application {
             double val = currentTelemetry.get(type);
             Label lbl = valueLabels.get(type);
             Label deltaLbl = deltaLabels.get(type);
-            ProgressBar bar = progressBars.get(type);
+            Label chip = chips.get(type);
 
             boolean high = val > type.maxNominal;
             boolean low = val < type.minNominal;
@@ -2731,51 +2373,18 @@ public class AegisBioApp extends Application {
             boolean tempOnly = (high || low)
                     && inRange(type, val - tempOffsets.getOrDefault(type, 0.0));
 
-            String statusText;
-            String textColor;
-            String barColor;
-            if (!high && !low) {
-                statusText = "норма";
-                textColor = "#F8FAFC";
-                barColor = "#0284C7";
-            } else {
-                String dir = high ? "ВИЩЕ НОРМИ" : "НИЖЧЕ НОРМИ";
-                if (tempOnly) {
-                    statusText = dir + " (тимчасово)";
-                    textColor = "#FBBF24";
-                    barColor = "#F59E0B";
-                } else {
-                    statusText = dir;
-                    textColor = "#FCA5A5";
-                    barColor = "#EF4444";
-                }
-            }
-
-            // Кругова шкала та позначка стану
-            HoloUi.RingGauge gauge = gauges.get(type);
-            Label chip = chips.get(type);
             Color stateColor = (!high && !low) ? HoloUi.GREEN : (tempOnly ? HoloUi.AMBER : HoloUi.RED);
-            if (gauge != null) {
-                gauge.set(val, type.hardMin, type.hardMax, type.minNominal, type.maxNominal, stateColor,
-                        String.format(Locale.US, Math.abs(val) >= 100 ? "%.0f" : "%.1f", val), type.unit);
-            }
+            String textColor = (!high && !low) ? "#F8FAFC" : (tempOnly ? "#FBBF24" : "#FCA5A5");
+
             if (chip != null) {
                 String st = (!high && !low) ? "● Норма"
                         : (high ? "▲ Вище норми" : "▼ Нижче норми") + (tempOnly ? ", тимчасово" : "");
                 HoloUi.styleChip(chip, st, stateColor);
             }
-
             if (lbl != null) {
-                lbl.setText(String.format(Locale.US, "%.1f %s  |  %s", val, type.unit, statusText));
-                lbl.setStyle("-fx-text-fill: " + textColor + "; -fx-font-size: 12px; -fx-font-weight: bold;");
+                lbl.setText(String.format(Locale.US, "%.1f %s", val, type.unit));
+                lbl.setStyle("-fx-text-fill: " + textColor + "; -fx-font-size: 24px; -fx-font-weight: bold;");
             }
-            if (bar != null) {
-                double range = type.maxNominal - type.minNominal;
-                double normalized = range > 0 ? (val - type.minNominal) / range : 0;
-                bar.setProgress(Math.max(0.05, Math.min(1.0, normalized)));
-                bar.setStyle("-fx-accent: " + barColor + ";");
-            }
-
             if (deltaLbl != null) {
                 String text = "";
                 if (beforeAction != null) {
@@ -2785,7 +2394,7 @@ public class AegisBioApp extends Application {
                     }
                 }
                 deltaLbl.setText(text);
-                deltaLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: "
+                deltaLbl.setStyle("-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: "
                         + (inRange(type, val) ? "#34D399" : "#FBBF24") + ";");
             }
         }
@@ -2806,25 +2415,23 @@ public class AegisBioApp extends Application {
         else if (score >= 50) { verdict = "Потрібна увага"; color = "#F59E0B"; }
         else { verdict = "Небезпечно"; color = "#EF4444"; }
         healthScoreValue = score;
-        healthScoreLabel.setText("ЗАГАЛЬНИЙ СТАН: " + score + " з 100 (" + verdict + ")");
+        healthVerdict = verdict;
+        healthColorHex = color;
+        bodyScoreLabel.setText(score + " / 100");
+        bodyVerdictLabel.setText(verdict);
+        bodyVerdictLabel.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 40px; -fx-font-weight: bold;");
+        bodyExplainLabel.setText("У нормі " + okCount + " з " + total + " показників.");
+        healthScoreLabel.setText("ЗАГАЛЬНИЙ СТАН: " + score + " з 100 (" + verdict + "). У нормі "
+                + okCount + " з " + total + " показників");
         healthBar.setProgress(score / 100.0);
         healthBar.setStyle("-fx-accent: " + color + ";");
-        Color healthColor = Color.web(color);
-        if (healthGauge != null) {
-            healthGauge.set(score, 0, 100, 90, 100, healthColor, String.valueOf(score), "з 100");
-        }
-        healthVerdictLabel.setText(verdict);
-        healthVerdictLabel.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 20px; -fx-font-weight: bold;");
-        healthExplainLabel.setText("У нормі " + okCount + " з " + total + " показників. "
-                + (okCount < total ? "Що саме поза нормою, видно на вкладці «Показники»." : "Так тримати!"));
 
         // Підказки перемальовуємо лише коли вони змінились
         runAutonomousTriage();
-        updateAutoPlanButton();
         updatePillViews();
         updateActivityButtons();
         updateAlertIndicators();
-        updateAssistant();
+        updateMenuStates();
         StringBuilder sig = new StringBuilder();
         for (ClinicalProtocol p : activeProtocols) {
             sig.append(p.urgency()).append('|').append(p.title()).append('|').append(p.actionId())
@@ -2900,9 +2507,25 @@ public class AegisBioApp extends Application {
         sb.append(String.format(Locale.US, "%nПСИХОЛОГІЧНИЙ СТАН (MindCare):%n- Індекс стресу: %d з 100 (%s)%n",
                 stress.index(), stress.level().label));
         if (!stress.reasons().isEmpty()) sb.append("- Що тисне: ").append(String.join("; ", stress.reasons())).append('\n');
-        sb.append(MindCareWindow.summaryText());
+        sb.append(MindCarePanel.summaryText());
 
-        sb.append("\nЖУРНАЛ ДІЙ:\n");
+        sb.append("\nКОНТРОЛЬ ВИКОНАННЯ (що космонавт справді робив):\n");
+        Map<ActivityJournal.Status, Integer> jc = journal.counts();
+        for (ActivityJournal.Status st : ActivityJournal.Status.values()) {
+            sb.append("- ").append(st.label).append(": ").append(jc.get(st)).append('\n');
+        }
+        if (journal.entries().isEmpty()) sb.append("(записів немає)\n");
+        for (ActivityJournal.Entry je : journal.entries()) {
+            sb.append("  [").append(LOG_TIME.format(missionStart.plusSeconds(je.clockSec()))).append("] ")
+                    .append(je.status().label).append(": ").append(je.title());
+            if (je.plannedSec() > 0) {
+                sb.append(" (факт ").append(ActivityJournal.formatSec(je.actualSec()))
+                        .append(" з ").append(ActivityJournal.formatSec(je.plannedSec())).append(')');
+            }
+            sb.append(". ").append(je.note()).append('\n');
+        }
+
+        sb.append("\nПРОТОКОЛ ПОДІЙ:\n");
         if (logLines.isEmpty()) sb.append("(порожньо)\n");
         for (String line : logLines) sb.append(line).append('\n');
         return sb.toString();
@@ -2940,7 +2563,7 @@ public class AegisBioApp extends Application {
         Stage stage = new Stage();
         blackoutStage = stage;
         stage.initOwner(ownerStage);
-        stage.setTitle("Aegis Blackout-Vault: Режим повної автономії (Solar Conjunction)");
+        stage.setTitle("VITAL: режим без зв'язку із Землею");
 
         VBox root = new VBox(14);
         root.setPadding(new Insets(20));
@@ -2951,14 +2574,14 @@ public class AegisBioApp extends Application {
         header.setStyle("-fx-background-color: #581C87; -fx-padding: 12; -fx-background-radius: 6;");
 
         Label icon = new Label("📡❌");
-        icon.setStyle("-fx-font-size: 24px;");
+        icon.setStyle("-fx-font-size: 48px;");
 
         VBox headerText = new VBox(2);
-        Label title = new Label("РЕЖИМ РАДІОБЛЕКАУТУ ТА ЛОКАЛЬНОГО БУФЕРА");
-        title.setStyle("-fx-text-fill: #F3E8FF; -fx-font-size: 14px; -fx-font-weight: 900;");
+        Label title = new Label("РЕЖИМ БЕЗ ЗВ'ЯЗКУ: ДАНІ ЗБЕРІГАЮТЬСЯ НА КОРАБЛІ");
+        title.setStyle("-fx-text-fill: #F3E8FF; -fx-font-size: 28px; -fx-font-weight: 900;");
 
-        Label sub = new Label("Сонце блокує сигнал із Землею. Зв'язок: 0 bps. Корабель керується AI-автопілотом Aegis.");
-        sub.setStyle("-fx-text-fill: #D8B4FE; -fx-font-size: 11px;");
+        Label sub = new Label("Сонце блокує сигнал із Землею. Зв'язку немає. Корабель керується автопілотом VITAL (штучний інтелект).");
+        sub.setStyle("-fx-text-fill: #D8B4FE; -fx-font-size: 22px;");
         sub.setWrapText(true);
 
         headerText.getChildren().addAll(title, sub);
@@ -2971,16 +2594,16 @@ public class AegisBioApp extends Application {
         counterCard.setStyle("-fx-background-color: #1E1B4B; -fx-border-color: #4338CA; -fx-border-radius: 6; -fx-background-radius: 6;");
 
         Label counterTitle = new Label();
-        counterTitle.setStyle("-fx-text-fill: #93C5FD; -fx-font-size: 10px; -fx-font-weight: bold;");
+        counterTitle.setStyle("-fx-text-fill: #93C5FD; -fx-font-size: 20px; -fx-font-weight: bold;");
 
         Label countdownDisplay = new Label();
-        countdownDisplay.setStyle("-fx-text-fill: #C084FC; -fx-font-size: 28px; -fx-font-weight: 900;");
+        countdownDisplay.setStyle("-fx-text-fill: #C084FC; -fx-font-size: 56px; -fx-font-weight: 900;");
 
         ProgressBar blackoutProgress = new ProgressBar(0);
         blackoutProgress.setMaxWidth(Double.MAX_VALUE);
 
         Label bufferStatus = new Label();
-        bufferStatus.setStyle("-fx-text-fill: #A78BFA; -fx-font-size: 11px;");
+        bufferStatus.setStyle("-fx-text-fill: #A78BFA; -fx-font-size: 22px;");
 
         counterCard.getChildren().addAll(counterTitle, countdownDisplay, blackoutProgress, bufferStatus);
 
@@ -3005,13 +2628,13 @@ public class AegisBioApp extends Application {
         });
 
         Label durationLabel = new Label("Тривалість:");
-        durationLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 11px; -fx-font-weight: bold;");
+        durationLabel.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 22px; -fx-font-weight: bold;");
 
         HBox controlsRow = new HBox(10, durationLabel, durationBox, startStopBtn);
         controlsRow.setAlignment(Pos.CENTER_LEFT);
 
         Label speedHint = new Label("Таймер іде за часом місії: змініть «Швидкість часу» у верхній панелі, щоб прискорити його.");
-        speedHint.setStyle("-fx-text-fill: #64748B; -fx-font-size: 10px;");
+        speedHint.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 20px;");
         speedHint.setWrapText(true);
 
         // --- Аварійний форсаж (обмежені резерви) ---
@@ -3025,7 +2648,7 @@ public class AegisBioApp extends Application {
             baseTelemetry.put(MetricType.RADIATION_DOSE, Math.max(0, baseTelemetry.get(MetricType.RADIATION_DOSE) - 15.0));
             recompute();
             updateAllTelemetryViews();
-            addLog("⚡ [AI Override] Використано аварійні резерви корабля! Залишилось зарядів: " + emergencyCharges + ".");
+            addLog("⚡ [Аварійний режим] Використано аварійні резерви корабля! Залишилось зарядів: " + emergencyCharges + ".");
 
             Alert alert = new Alert(Alert.AlertType.INFORMATION,
                     "Системи корабля перерозподілили аварійні ресурси. Рівень води та радіації покращено!\n"
@@ -3041,23 +2664,23 @@ public class AegisBioApp extends Application {
         aiDecisionsCard.setPadding(new Insets(12));
         aiDecisionsCard.setStyle("-fx-background-color: #1E293B; -fx-border-color: #334155; -fx-border-radius: 6; -fx-background-radius: 6;");
 
-        Label aiTitle = new Label("ЛОКАЛЬНІ ПРОТОКОЛИ БЕЗПЕКИ AEGIS (AI-ARBITRATION):");
-        aiTitle.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 12px; -fx-font-weight: bold;");
+        Label aiTitle = new Label("ЩО РОБИТЬ АВТОПІЛОТ VITAL БЕЗ ЗВ'ЯЗКУ:");
+        aiTitle.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 24px; -fx-font-weight: bold;");
 
         VBox decisionsList = new VBox(6);
         decisionsList.getChildren().addAll(
                 createBlackoutItem("✓ Радіація: водяні щити поступово знижують отриману дозу."),
-                createBlackoutItem("✓ Вода: якщо запас біля нижньої межі, AI сам п'є 400 мл (у межах денної норми)."),
-                createBlackoutItem("✓ Серце й тиск: при підвищеному пульсі, тиску чи низькому HRV AI робить дихальну вправу."),
-                createBlackoutItem("✓ Тиск на зоровий нерв: біля межі норми AI запускає сеанс LBNP."),
+                createBlackoutItem("✓ Вода: якщо запас біля нижньої межі, автопілот сам п'є 400 мл (у межах денної норми)."),
+                createBlackoutItem("✓ Серце й тиск: при підвищеному пульсі, тиску чи низькому стрес-балансі автопілот робить дихальну вправу."),
+                createBlackoutItem("✓ Тиск на зоровий нерв: біля межі норми автопілот запускає тренування ніг під низьким тиском (LBNP)."),
                 createBlackoutItem("✓ Телеметрія: щохвилини місії пакет шифрується й іде в локальний буфер.")
         );
 
         Label recentTitle = new Label("ОСТАННІ ДІЇ АВТОПІЛОТА:");
-        recentTitle.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 11px; -fx-font-weight: bold;");
+        recentTitle.setStyle("-fx-text-fill: #38BDF8; -fx-font-size: 22px; -fx-font-weight: bold;");
         Label recentActions = new Label();
         recentActions.setWrapText(true);
-        recentActions.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 11px;");
+        recentActions.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 22px;");
 
         aiDecisionsCard.getChildren().addAll(aiTitle, decisionsList, recentTitle, recentActions);
 
@@ -3075,20 +2698,20 @@ public class AegisBioApp extends Application {
                 double total = Math.max(1, blackoutEndSec - blackoutStartSec);
                 blackoutProgress.setProgress(Math.min(1.0, Math.max(0.0, (clockSec - blackoutStartSec) / total)));
                 bufferStatus.setText("📦 Локальний буфер: " + blackoutPackets() + " пакетів (~" + blackoutPackets() * PACKET_KB
-                        + " КБ) чекають відправки. Дій AI: " + blackoutAiActions);
-                startStopBtn.setText("⏹ Перервати блекаут");
+                        + " КБ) чекають відправки. Дій автопілота: " + blackoutAiActions);
+                startStopBtn.setText("⏹ Вимкнути режим без зв'язку");
                 startStopBtn.setStyle("-fx-background-color: #B91C1C; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
             } else {
-                counterTitle.setText("БЛЕКАУТ НЕ АКТИВНИЙ. ОБЕРІТЬ ТРИВАЛІСТЬ І ЗАПУСТІТЬ");
+                counterTitle.setText("РЕЖИМ БЕЗ ЗВ'ЯЗКУ ВИМКНЕНО. ОБЕРІТЬ ТРИВАЛІСТЬ І ЗАПУСТІТЬ");
                 countdownDisplay.setText("Зв'язок із Землею є");
                 blackoutProgress.setProgress(0);
                 bufferStatus.setText("📦 Локальний буфер порожній");
-                startStopBtn.setText("▶ Активувати блекаут");
+                startStopBtn.setText("▶ Увімкнути режим без зв'язку");
                 startStopBtn.setStyle("-fx-background-color: #7C3AED; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand;");
             }
             durationBox.setDisable(on);
             aiBoostBtn.setDisable(!on || emergencyCharges <= 0);
-            aiBoostBtn.setText("⚡ Аварійний форсаж життєзабезпечення (AI Override), зарядів: "
+            aiBoostBtn.setText("⚡ Аварійне посилення життєзабезпечення, зарядів: "
                     + (on ? emergencyCharges : EMERGENCY_CHARGES_MAX) + "/" + EMERGENCY_CHARGES_MAX);
             recentActions.setText(autopilotRecent.isEmpty()
                     ? (on ? "Поки що втручання не потрібні: показники в нормі." : "—")

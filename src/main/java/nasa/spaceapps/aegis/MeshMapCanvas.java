@@ -294,8 +294,8 @@ public final class MeshMapCanvas extends Canvas {
 
         // підпис
         gc.setTextAlign(TextAlignment.LEFT);
-        gc.setFill(Color.web("#475569"));
-        gc.setFont(Font.font("Consolas", 10));
+        gc.setFill(Color.web("#94A3B8"));
+        gc.setFont(Font.font("Consolas", 15));
         gc.fillText("LOCAL MESH · BLE / UWB · БЕЗ ЦЕНТРАЛЬНОГО СЕРВЕРА", mx + 14, h - my - 8);
     }
 
@@ -316,9 +316,9 @@ public final class MeshMapCanvas extends Canvas {
 
         gc.setTextAlign(TextAlignment.CENTER);
         gc.setFill(Color.rgb(148, 163, 184, 0.75));
-        gc.setFont(Font.font("Segoe UI", 9));
+        gc.setFont(Font.font("Segoe UI", 13.5));
         gc.fillText(m.shortName(), x, y + 3);
-        gc.setFill(Color.web("#64748B"));
+        gc.setFill(Color.web("#A3B1C6"));
         gc.fillText(m.getCompartment(), x, y - NODE_R - 6);
         gc.fillText("пішов допомагати", x, y + NODE_R + 14);
         gc.setTextAlign(TextAlignment.LEFT);
@@ -356,7 +356,7 @@ public final class MeshMapCanvas extends Canvas {
             gc.setGlobalAlpha(1.0);
         } else {
             gc.setFill(Color.web("#E2E8F0"));
-            gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 20));
+            gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 30));
             gc.setTextAlign(TextAlignment.CENTER);
             gc.fillText(m.shortName().substring(0, 1), x, y + 7);
         }
@@ -379,20 +379,20 @@ public final class MeshMapCanvas extends Canvas {
         String name = m.shortName() + (m.isLocal() ? " (ви)" : "");
         if (responder) {
             gc.setFill(Color.web("#6EE7B7"));
-            gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 10));
+            gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 15));
             gc.fillText(caption, x, y - NODE_R - 20);
             gc.setFill(Color.web("#E2E8F0"));
-            gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 11));
+            gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 16.5));
             gc.fillText(name, x, y - NODE_R - 7);
         } else {
             gc.setFill(Color.web("#E2E8F0"));
-            gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 11));
+            gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 16.5));
             gc.fillText(name, x, y + NODE_R + 14);
             gc.setFill(off ? Color.web("#94A3B8") : sc);
-            gc.setFont(Font.font("Consolas", FontWeight.BOLD, 11));
+            gc.setFont(Font.font("Consolas", FontWeight.BOLD, 16.5));
             gc.fillText(off ? "немає сигналу" : "♥ " + Math.round(m.getHr()) + " · HRV " + Math.round(m.getHrv()), x, y + NODE_R + 27);
-            gc.setFill(Color.web("#64748B"));
-            gc.setFont(Font.font("Segoe UI", 9));
+            gc.setFill(Color.web("#A3B1C6"));
+            gc.setFont(Font.font("Segoe UI", 13.5));
             gc.fillText(m.getCompartment(), x, y - NODE_R - 6);
         }
         gc.setTextAlign(TextAlignment.LEFT);
@@ -416,14 +416,14 @@ public final class MeshMapCanvas extends Canvas {
         gc.fillRoundRect(bx - 1.5, by - 5, 3, 10, 2, 2);
 
         gc.setTextAlign(TextAlignment.CENTER);
-        gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 15));
+        gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 22.5));
         for (int k = 0; k < 3; k++) {
             double ph = ((now * 0.5) + k / 3.0) % 1.0;
             gc.setFill(Color.rgb(110, 231, 183, 0.9 * (1 - ph)));
             gc.fillText("+", x + (k - 1) * 16, y - NODE_R - 2 - ph * 30);
         }
         gc.setFill(Color.web("#6EE7B7"));
-        gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 10));
+        gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 15));
         gc.fillText("🤝 допомога надається", x, y + NODE_R + 40);
         gc.setTextAlign(TextAlignment.LEFT);
     }
@@ -443,7 +443,7 @@ public final class MeshMapCanvas extends Canvas {
         gc.fillPolygon(new double[]{cx - 4, cx + 4, cx}, new double[]{by + bh - 0.5, by + bh - 0.5, by + bh + 6}, 3);
         gc.setFill(c);
         gc.setTextAlign(TextAlignment.CENTER);
-        gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 10));
+        gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 15));
         gc.fillText(text, bx + bw / 2, by + 14);
         gc.setTextAlign(TextAlignment.LEFT);
     }

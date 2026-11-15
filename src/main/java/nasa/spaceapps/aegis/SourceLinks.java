@@ -20,7 +20,7 @@ public final class SourceLinks {
     private static HostServices host;
     private static Window owner;
 
-    private static final String LINK_STYLE = "-fx-text-fill: #38BDF8; -fx-font-size: 11px; -fx-padding: 0; "
+    private static final String LINK_STYLE = "-fx-text-fill: #38BDF8; -fx-font-size: 22px; -fx-padding: 0; "
             + "-fx-border-color: transparent; -fx-cursor: hand;";
 
     private SourceLinks() {
@@ -83,7 +83,7 @@ public final class SourceLinks {
         p.setAlignment(Pos.CENTER_LEFT);
         if (caption != null && !caption.isEmpty()) {
             Label c = new Label(caption);
-            c.setStyle("-fx-text-fill: #64748B; -fx-font-size: 11px;");
+            c.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 22px;");
             p.getChildren().add(c);
         }
         for (SpaceSources.Link l : links) {

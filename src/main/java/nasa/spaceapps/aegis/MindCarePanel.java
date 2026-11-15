@@ -48,21 +48,21 @@ public final class MindCarePanel {
     private record Quest(String id, String text) {}
 
     private static final Quest[] QUESTS = {
-            new Quest("STRETCH", "🤸 Розминка 5 хв"),
-            new Quest("WATER", "💧 Випити води"),
-            new Quest("GAZE", "🪟 2 хв подивитись вдалину (без екрана)"),
-            new Quest("TALK", "🗣 5 хв поговорити з колегою по екіпажу")
+            new Quest("STRETCH", "🤸 5-min stretch"),
+            new Quest("WATER", "💧 Drink water"),
+            new Quest("GAZE", "🪟 Look into the distance for 2 min (no screen)"),
+            new Quest("TALK", "🗣 Talk with a crewmate for 5 min")
     };
 
     private static final String[] GROUNDING = {
-            "Назвіть 5 речей, які ВИ БАЧИТЕ навколо.",
-            "Назвіть 4 речі, яких ВИ МОЖЕТЕ ТОРКНУТИСЬ.",
-            "Назвіть 3 звуки, які ВИ ЧУЄТЕ.",
-            "Назвіть 2 запахи, які ВИ ВІДЧУВАЄТЕ.",
-            "Назвіть 1 смак у роті. Зробіть глибокий вдих. Готово."
+            "Name 5 things YOU CAN SEE around you.",
+            "Name 4 things YOU CAN TOUCH.",
+            "Name 3 sounds YOU CAN HEAR.",
+            "Name 2 smells YOU CAN SMELL.",
+            "Name 1 taste in your mouth. Take a deep breath. Done."
     };
 
-    private static final String[] MOOD_LABEL = {"Дуже погано", "Погано", "Нормально", "Добре", "Чудово"};
+    private static final String[] MOOD_LABEL = {"Very bad", "Bad", "Okay", "Good", "Great"};
 
     // ============ ВІКНО ============
     private final Hooks hooks;
@@ -78,7 +78,7 @@ public final class MindCarePanel {
     private final Label moodInfo = lbl("", 11, "#94A3B8", false);
     private final Label moodHint = lbl("", 11, "#FBBF24", false);
     private final VBox questBox = new VBox(6);
-    private final Button sosBtn = new Button("🆘 SOS: потрібна психологічна допомога");
+    private final Button sosBtn = new Button("🆘 SOS: psychological help needed");
 
     private String lastQuestSig = "";
     private int groundingStep = -1;
@@ -88,11 +88,11 @@ public final class MindCarePanel {
     /** Короткий текст для звіту (див. buildReport). */
     public static String summaryText() {
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format(Locale.US, "- Вправи на відновлення відмічено сьогодні: %d з %d%n", JOURNAL.doneToday.size(), QUESTS.length));
+        sb.append(String.format(Locale.US, "- Recovery exercises marked today: %d of %d%n", JOURNAL.doneToday.size(), QUESTS.length));
         if (JOURNAL.moodCount == 0) {
-            sb.append("- Чек-ін настрою: записів немає\n");
+            sb.append("- Mood check-in: no entries\n");
         } else {
-            sb.append(String.format(Locale.US, "- Середній настрій: %.1f з 5 (записів: %d)%n",
+            sb.append(String.format(Locale.US, "- Average mood: %.1f of 5 (entries: %d)%n",
                     JOURNAL.moodSum / (double) JOURNAL.moodCount, JOURNAL.moodCount));
             for (String m : JOURNAL.recentMoods) sb.append("  ").append(m).append('\n');
         }
@@ -104,7 +104,7 @@ public final class MindCarePanel {
         breathing = new BreathingPane(this::onBreathingFinished);
 
         // Дві колонки на всю ширину екрана: ліворуч стан і дихання, праворуч вправи та SOS
-        VBox breathCard = card("Дихання 4-4-4-4", "Вдих 4 с, затримка 4 с, видих 4 с, затримка 4 с. Чотири цикли: близько хвилини.", breathing);
+        VBox breathCard = card("4-4-4-4 breathing", "Inhale 4 s, hold 4 s, exhale 4 s, hold 4 s. Four cycles: about a minute.", breathing);
         VBox.setVgrow(breathCard, Priority.ALWAYS);
         VBox left = new VBox(14, statusCard(), breathCard);
         VBox right = new VBox(14, moodCard(), questsCard(), groundingCard(), sosCard());
@@ -148,11 +148,11 @@ public final class MindCarePanel {
 
     // ============ БЛОКИ ІНТЕРФЕЙСУ ============
     private Node header() {
-        Label title = lbl("VITAL: ПСИХОЛОГІЧНА ПІДТРИМКА", 20, "#22D3EE", true);
+        Label title = lbl("VITAL: PSYCHOLOGICAL SUPPORT", 20, "#22D3EE", true);
         title.setGraphic(HoloUi.iconMind());
         title.setGraphicTextGap(10);
-        Label sub = lbl("Локальна підтримка без інтернету й без нейромереж: прозорі правила та готові вправи. "
-                + "Це не медичний прилад.", 11, "#A3B1C6", false);
+        Label sub = lbl("Local support with no internet and no neural networks: transparent rules and ready-made exercises. "
+                + "This is not a medical device.", 11, "#A3B1C6", false);
         sub.setWrapText(true);
         VBox box = new VBox(4, title, sub);
         return box;
@@ -172,8 +172,8 @@ public final class MindCarePanel {
         suggestBanner.setManaged(false);
 
         VBox top = new VBox(2, stressValue, stressLevel);
-        return card("📈 Рівень стресу зараз",
-                "Рахується з пульсу, HRV, сну та води й згладжується, щоб разовий стрибок не лякав.",
+        return card("📈 Current stress level",
+                "Calculated from pulse, HRV, sleep and water, and smoothed so a one-off spike doesn't alarm you.",
                 top, stressBar, reasonsLabel, protocolLabel, suggestBanner);
     }
 
@@ -191,13 +191,13 @@ public final class MindCarePanel {
         }
         moodInfo.setWrapText(true);
         moodHint.setWrapText(true);
-        return card("😊 Емоційний чек-ін", "Одне натискання. Запис потрапляє в журнал з часом місії, щоб центр керування на Землі бачив контекст.",
+        return card("😊 Emotional check-in", "One tap. The entry goes into the log with mission time so mission control on Earth sees the context.",
                 row, moodInfo, moodHint);
     }
 
     private Node questsCard() {
-        return card("🌿 Щоденні вправи на відновлення",
-                "Відмітьте те, що справді зробили. Це самозвіт: програма не може його перевірити. Нова доба: список оновлюється.",
+        return card("🌿 Daily recovery exercises",
+                "Mark what you really did. This is self-reported: the app cannot verify it. New day: the list resets.",
                 questBox);
     }
 
@@ -206,8 +206,8 @@ public final class MindCarePanel {
         groundingBtn.setStyle(btnStyle("#7C3AED"));
         groundingBtn.setOnAction(e -> onGroundingNext());
         updateGroundingView();
-        return card("🌿 Вправа «5-4-3-2-1»",
-                "Повертає увагу в «тут і зараз» при тривозі. Виконуйте кроки по черзі.",
+        return card("🌿 “5-4-3-2-1” exercise",
+                "Brings attention back to the “here and now” during anxiety. Do the steps one by one.",
                 groundingText, groundingBtn);
     }
 
@@ -215,44 +215,44 @@ public final class MindCarePanel {
         sosBtn.setStyle(btnStyle("#B91C1C"));
         sosBtn.setMaxWidth(Double.MAX_VALUE);
         sosBtn.setOnAction(e -> onSos());
-        Label note = lbl("Зв'язку із Землею може не бути. Тоді сигнал збережеться в локальному буфері "
-                + "й піде в центр керування на Землі, щойно зв'язок з'явиться.", 11, "#A3B1C6", false);
+        Label note = lbl("There may be no link with Earth. Then the signal is saved in a local buffer "
+                + "and goes to mission control on Earth as soon as the link returns.", 11, "#A3B1C6", false);
         note.setWrapText(true);
-        return card("🆘 Аварійний сигнал", "Використовуйте, якщо вам важко самостійно або ви хвилюєтесь за колегу.",
+        return card("🆘 Emergency signal", "Use it if you are struggling on your own or you are worried about a colleague.",
                 sosBtn, note);
     }
 
     // ============ ДІЇ ============
     private void onBreathingFinished() {
-        markOnce("BREATH_SESSION", "Дихальний сеанс 4-4-4-4 завершено");
+        markOnce("BREATH_SESSION", "4-4-4-4 breathing session completed");
         hooks.onBreathingDone().run();
         refreshView();
     }
 
     private void onMood(int value) {
         StressEngine.Assessment a = hooks.engine().latest();
-        String line = String.format(Locale.US, "%s %d/5 (індекс стресу %d, %s)",
+        String line = String.format(Locale.US, "%s %d/5 (stress index %d, %s)",
                 MOOD_LABEL[value - 1], value, a.index(), a.level().label);
         JOURNAL.moodSum += value;
         JOURNAL.moodCount++;
         JOURNAL.recentMoods.addFirst(line);
         while (JOURNAL.recentMoods.size() > 5) JOURNAL.recentMoods.removeLast();
 
-        hooks.log().accept("🧠 [MindCare] Чек-ін настрою: " + line + ".");
+        hooks.log().accept("🧠 [MindCare] Mood check-in: " + line + ".");
 
         if (value <= 1) {
-            moodHint.setText("Вам дуже важко. Зробіть дихання, поговоріть із колегою або натисніть SOS нижче.");
+            moodHint.setText("You are having a very hard time. Do the breathing, talk to a crewmate or press SOS below.");
         } else if (value == 2 || a.level().ordinal() >= StressEngine.Level.HIGH.ordinal()) {
-            moodHint.setText("Схоже, день непростий. Спробуйте дихання 4-4-4-4 вище.");
+            moodHint.setText("Looks like a tough day. Try the 4-4-4-4 breathing above.");
         } else {
-            moodHint.setText("Дякуємо, записано.");
+            moodHint.setText("Thank you, recorded.");
         }
         refreshView();
     }
 
     private void onQuest(Quest q) {
         if (!JOURNAL.doneToday.add(q.id())) return;
-        hooks.log().accept("🧠 [MindCare] Відмічено вручну: " + q.text() + ".");
+        hooks.log().accept("🧠 [MindCare] Marked manually: " + q.text() + ".");
         refreshView();
     }
 
@@ -262,7 +262,7 @@ public final class MindCarePanel {
         } else {
             groundingStep++;
             if (groundingStep >= GROUNDING.length) {
-                markOnce("GROUNDING", "Вправу «5-4-3-2-1» виконано");
+                markOnce("GROUNDING", "“5-4-3-2-1” exercise completed");
                 groundingStep = -1;
             }
         }
@@ -272,15 +272,15 @@ public final class MindCarePanel {
 
     private void onSos() {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION,
-                "Надіслати аварійний сигнал психологічної підтримки в центр керування на Землі?",
+                "Send an emergency psychological support signal to mission control on Earth?",
                 ButtonType.YES, ButtonType.NO);
-        alert.setHeaderText("Сигнал SOS: потрібна психологічна допомога");
+        alert.setHeaderText("SOS signal: psychological help needed");
         alert.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b -> hooks.onSos().run());
     }
 
     private void markOnce(String id, String logText) {
         boolean first = JOURNAL.doneToday.add(id);
-        hooks.log().accept("🧠 [MindCare] " + logText + (first ? "." : " (повторно за сьогодні)."));
+        hooks.log().accept("🧠 [MindCare] " + logText + (first ? "." : " (repeated today)."));
     }
 
     // ============ ОНОВЛЕННЯ ЕКРАНА ============
@@ -300,25 +300,25 @@ public final class MindCarePanel {
         stressBar.setProgress(a.index() / 100.0);
         stressBar.setStyle("-fx-accent: " + color + ";");
         reasonsLabel.setText(a.reasons().isEmpty()
-                ? "Причин для хвилювання не видно."
-                : "Що впливає: " + String.join("; ", a.reasons()) + ".");
+                ? "No obvious causes for concern."
+                : "What is affecting it: " + String.join("; ", a.reasons()) + ".");
         protocolLabel.setText(StressEngine.protocolFor(a.level()));
 
         boolean banner = a.sustained();
         suggestBanner.setVisible(banner);
         suggestBanner.setManaged(banner);
         if (banner) {
-            suggestBanner.setText("Стрес тримається вже кілька хвилин. Зробіть паузу: почніть дихання нижче.");
+            suggestBanner.setText("Stress has persisted for several minutes. Take a break: start the breathing below.");
         }
 
         boolean critical = a.level() == StressEngine.Level.CRITICAL;
-        sosBtn.setText(critical ? "🆘 SOS: рекомендовано надіслати сигнал" : "🆘 SOS: потрібна психологічна допомога");
+        sosBtn.setText(critical ? "🆘 SOS: sending a signal is recommended" : "🆘 SOS: psychological help needed");
 
         if (JOURNAL.moodCount == 0) {
-            moodInfo.setText("Записів ще немає.");
+            moodInfo.setText("No entries yet.");
         } else {
             StringBuilder sb = new StringBuilder(String.format(Locale.US,
-                    "Середній настрій: %.1f з 5. Останні записи:", JOURNAL.moodSum / (double) JOURNAL.moodCount));
+                    "Average mood: %.1f of 5. Latest entries:", JOURNAL.moodSum / (double) JOURNAL.moodCount));
             for (String m : JOURNAL.recentMoods) sb.append("\n• ").append(m);
             moodInfo.setText(sb.toString());
         }
@@ -345,11 +345,11 @@ public final class MindCarePanel {
 
     private void updateGroundingView() {
         if (groundingStep < 0) {
-            groundingText.setText("Натисніть «Почати», щоб пройти п'ять коротких кроків.");
-            groundingBtn.setText("Почати");
+            groundingText.setText("Press “Start” to go through five short steps.");
+            groundingBtn.setText("Start");
         } else {
-            groundingText.setText("Крок " + (groundingStep + 1) + " з " + GROUNDING.length + ": " + GROUNDING[groundingStep]);
-            groundingBtn.setText(groundingStep == GROUNDING.length - 1 ? "Завершити" : "Далі →");
+            groundingText.setText("Step " + (groundingStep + 1) + " of " + GROUNDING.length + ": " + GROUNDING[groundingStep]);
+            groundingBtn.setText(groundingStep == GROUNDING.length - 1 ? "Finish" : "Next →");
         }
     }
 
@@ -357,13 +357,13 @@ public final class MindCarePanel {
     private static final class BreathingPane extends VBox {
         private static final double PHASE_SEC = 4.0;
         private static final int CYCLES = 4;
-        private static final String[] PHASES = {"Вдих", "Затримка", "Видих", "Затримка"};
+        private static final String[] PHASES = {"Inhale", "Hold", "Exhale", "Hold"};
         private static final double R_MIN = 38, R_MAX = 92;
 
         private final Canvas canvas = new Canvas(240, 220);
-        private final Label phaseLabel = lbl("Готові?", 16, "#22D3EE", true);
+        private final Label phaseLabel = lbl("Ready?", 16, "#22D3EE", true);
         private final Label infoLabel = lbl("", 11, "#94A3B8", false);
-        private final Button startBtn = new Button("▶ Почати дихання");
+        private final Button startBtn = new Button("▶ Start breathing");
         private final Runnable onDone;
         private AnimationTimer timer;
         private long startNanos;
@@ -383,7 +383,7 @@ public final class MindCarePanel {
         void start() {
             stop();
             startNanos = 0;
-            startBtn.setText("■ Зупинити");
+            startBtn.setText("■ Stop");
             timer = new AnimationTimer() {
                 @Override
                 public void handle(long now) {
@@ -407,7 +407,7 @@ public final class MindCarePanel {
                     };
                     int left = (int) Math.ceil(PHASE_SEC - (inCycle - phase * PHASE_SEC));
                     phaseLabel.setText(PHASES[phase] + "  " + Math.max(1, left));
-                    infoLabel.setText("Цикл " + (cycle + 1) + " з " + CYCLES);
+                    infoLabel.setText("Cycle " + (cycle + 1) + " of " + CYCLES);
                     draw(r, phase == 0 || phase == 1 ? Color.web("#22D3EE") : Color.web("#34D399"));
                 }
             };
@@ -419,16 +419,16 @@ public final class MindCarePanel {
                 timer.stop();
                 timer = null;
             }
-            startBtn.setText("▶ Почати дихання");
-            phaseLabel.setText("Готові?");
+            startBtn.setText("▶ Start breathing");
+            phaseLabel.setText("Ready?");
             infoLabel.setText("");
             draw(R_MIN, Color.web("#22D3EE"));
         }
 
         private void finish() {
             stop();
-            phaseLabel.setText("Сеанс завершено ✔");
-            infoLabel.setText("Помітьте, як змінилось самопочуття.");
+            phaseLabel.setText("Session complete ✔");
+            infoLabel.setText("Notice how your well-being has changed.");
             onDone.run();
         }
 

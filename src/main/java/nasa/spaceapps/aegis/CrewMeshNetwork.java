@@ -83,19 +83,19 @@ public final class CrewMeshNetwork {
             kg.init(256);
             crewKey = kg.generateKey();
         } catch (Exception e) {
-            throw new IllegalStateException("AES-256 недоступний", e);
+            throw new IllegalStateException("AES-256 unavailable", e);
         }
     }
 
     /** Три члени екіпажу з готовим розташуванням у відсіках. Перший: користувач. */
     public static CrewMeshNetwork createDefaultCrew() {
         CrewMeshNetwork n = new CrewMeshNetwork();
-        CrewMemberState a = new CrewMemberState("CREW_01", "Командир (Альфа)", "Командир екіпажу", 78, 62, 95, true);
-        CrewMemberState b = new CrewMemberState("CREW_02", "Інженер (Бета)", "Системний інженер", 72, 70, 92, false);
-        CrewMemberState c = new CrewMemberState("CREW_03", "Медик (Гамма)", "Біохімік / Лікар", 81, 55, 88, false);
-        a.setPlacement(0.14, 0.50, "Командний модуль");
-        b.setPlacement(0.80, 0.24, "Інженерний відсік");
-        c.setPlacement(0.64, 0.80, "Медичний відсік");
+        CrewMemberState a = new CrewMemberState("CREW_01", "Commander (Alpha)", "Crew commander", 78, 62, 95, true);
+        CrewMemberState b = new CrewMemberState("CREW_02", "Engineer (Beta)", "Systems engineer", 72, 70, 92, false);
+        CrewMemberState c = new CrewMemberState("CREW_03", "Medic (Gamma)", "Biochemist / Doctor", 81, 55, 88, false);
+        a.setPlacement(0.14, 0.50, "Command module");
+        b.setPlacement(0.80, 0.24, "Engineering bay");
+        c.setPlacement(0.64, 0.80, "Medical bay");
         a.setDemoAnomaly(40, 13);
         b.setDemoAnomaly(38, 12);
         c.setDemoAnomaly(138, 20);
@@ -162,9 +162,9 @@ public final class CrewMeshNetwork {
     public boolean acknowledge(CrewMemberState m) {
         boolean something = m.acknowledge(clock);
         if (something) {
-            event(Kind.OK, "✅ " + m.shortName() + " підтвердив «Усе гаразд»: тривогу скасовано.", m);
+            event(Kind.OK, "✅ " + m.shortName() + " confirmed “All good”: alarm cancelled.", m);
         } else {
-            event(Kind.INFO, "✅ " + m.shortName() + ": стан підтверджено, усе гаразд.", m);
+            event(Kind.INFO, "✅ " + m.shortName() + ": status confirmed, all good.", m);
         }
         return something;
     }
@@ -181,8 +181,8 @@ public final class CrewMeshNetwork {
         if (!victim.isSosActive()) return;
         victim.clearSos(clock);
         if (by != null && by != victim) {
-            event(Kind.OK, "✅ " + by.shortName() + " завершив допомогу: SOS від "
-                    + victim.shortName() + " знято.", victim);
+            event(Kind.OK, "✅ " + by.shortName() + " finished helping: SOS from "
+                    + victim.shortName() + " cleared.", victim);
         }
     }
 
@@ -191,15 +191,15 @@ public final class CrewMeshNetwork {
         if (on) m.resetGrace();   // новий збій після «Усе гаразд» має знову запускати таймер
         m.setAnomalyActive(on);
         event(on ? Kind.WARN : Kind.INFO,
-                on ? "⚡ [ДЕМО] " + m.shortName() + ": імітація раптового збою показників."
-                        : "⚡ [ДЕМО] " + m.shortName() + ": імітацію збою вимкнено.", m);
+                on ? "⚡ [DEMO] " + m.shortName() + ": simulating a sudden vitals failure."
+                        : "⚡ [DEMO] " + m.shortName() + ": failure simulation stopped.", m);
     }
 
     public void toggleLink(CrewMemberState m) {
         m.linkUp = !m.linkUp;
         event(m.linkUp ? Kind.INFO : Kind.WARN,
-                m.linkUp ? "📡 [ДЕМО] " + m.shortName() + ": радіомодуль увімкнено."
-                        : "📡 [ДЕМО] " + m.shortName() + ": радіомодуль вимкнено (імітація розряду/виходу з зони).", m);
+                m.linkUp ? "📡 [DEMO] " + m.shortName() + ": radio module turned on."
+                        : "📡 [DEMO] " + m.shortName() + ": radio module turned off (simulated battery drain / leaving the zone).", m);
     }
 
     public void mute(CrewMemberState receiver, String senderId) {
@@ -217,29 +217,29 @@ public final class CrewMeshNetwork {
         al.responding = true;
         al.respondStart = clock;
         al.respondDuration = Math.max(6, Math.min(14, al.distanceM * 0.7));
-        event(Kind.OK, "🏃 " + receiver.shortName() + " вирушив до " + victim.shortName()
-                + " (≈" + Math.round(al.distanceM) + " м, ~" + Math.round(al.respondDuration) + " с).", receiver);
+        event(Kind.OK, "🏃 " + receiver.shortName() + " set off toward " + victim.shortName()
+                + " (≈" + Math.round(al.distanceM) + " m, ~" + Math.round(al.respondDuration) + " s).", receiver);
         send(receiver, victim, PacketType.ACK, 0.8, () ->
-                event(Kind.INFO, "📨 " + victim.shortName() + ": допомога вже в дорозі ("
+                event(Kind.INFO, "📨 " + victim.shortName() + ": help is already on the way ("
                         + receiver.shortName() + ").", victim), null);
     }
 
     /** Запит «Усе гаразд?»: якщо сусід здоровий, він відповість; якщо ні, повідомимо про тишу. */
     public void ping(CrewMemberState from, CrewMemberState to) {
-        event(Kind.INFO, "💬 " + from.shortName() + " → " + to.shortName() + ": «Усе гаразд?»", from);
+        event(Kind.INFO, "💬 " + from.shortName() + " → " + to.shortName() + ": “All good?”", from);
         boolean[] got = {false};
         send(from, to, PacketType.PING, 0.7, () -> {
             if (to.isHealthy()) {
                 schedule(clock + 1.2, () -> send(to, from, PacketType.PONG, 0.7, () -> {
                     got[0] = true;
-                    event(Kind.OK, "✅ " + to.shortName() + ": «Усе гаразд» (пульс "
+                    event(Kind.OK, "✅ " + to.shortName() + ": “All good” (pulse "
                             + Math.round(to.getHr()) + ", HRV " + Math.round(to.getHrv()) + ").", to);
                 }, null));
             }
         }, null);
         schedule(clock + 6, () -> {
             if (!got[0]) {
-                event(Kind.WARN, "⏳ " + to.shortName() + " не відповідає на запит. Перевірте сусідній вузол.", to);
+                event(Kind.WARN, "⏳ " + to.shortName() + " is not responding to the request. Check the neighboring node.", to);
             }
         });
     }
@@ -275,11 +275,11 @@ public final class CrewMeshNetwork {
             if (off != m.offline) {
                 m.offline = off;
                 if (off) {
-                    event(Kind.WARN, "📡 Втрачено сигнал від " + m.shortName() + " (" + (int) OFFLINE_AFTER
-                            + " с без heartbeat). Останні дані: пульс " + Math.round(m.getHr())
+                    event(Kind.WARN, "📡 Signal lost from " + m.shortName() + " (" + (int) OFFLINE_AFTER
+                            + " s without heartbeat). Last data: pulse " + Math.round(m.getHr())
                             + ", HRV " + Math.round(m.getHrv()) + ".", m);
                 } else {
-                    event(Kind.OK, "📡 Зв'язок із " + m.shortName() + " відновлено.", m);
+                    event(Kind.OK, "📡 Connection with " + m.shortName() + " restored.", m);
                 }
             }
         }
@@ -288,11 +288,11 @@ public final class CrewMeshNetwork {
         for (CrewMemberState m : members) {
             boolean running = m.isTimerRunning();
             if (running && !m.timerWasRunning) {
-                event(Kind.WARN, "⚠️ " + m.shortName() + ": " + m.getAnomalyText() + ". Чекаємо «Усе гаразд» "
-                        + Math.round(confirmWindow) + " с.", m);
+                event(Kind.WARN, "⚠️ " + m.shortName() + ": " + m.getAnomalyText() + ". Waiting for “All good” for "
+                        + Math.round(confirmWindow) + " s.", m);
             } else if (!running && m.timerWasRunning && !m.isSosActive()) {
                 if (!m.consumeTimerEndedByAck()) {
-                    event(Kind.OK, "💚 " + m.shortName() + ": показники відновилися самі, тривогу знято.", m);
+                    event(Kind.OK, "💚 " + m.shortName() + ": vitals recovered on their own, alarm cleared.", m);
                 }
             }
             m.timerWasRunning = running;
@@ -302,9 +302,9 @@ public final class CrewMeshNetwork {
                 m.sosBroadcasted = true;
                 m.lastBeacon = clock;
                 String why = m.isAutoSos()
-                        ? "АВТО-SOS: підтвердження «Усе гаразд» не надійшло за " + Math.round(confirmWindow) + " с"
-                        : "ручний сигнал SOS";
-                event(Kind.SOS, "🚨 " + m.shortName() + ": " + why + ". Розсилаю крипто-пакет сусідам.", m);
+                        ? "AUTO-SOS: no “All good” confirmation received within " + Math.round(confirmWindow) + " s"
+                        : "manual SOS signal";
+                event(Kind.SOS, "🚨 " + m.shortName() + ": " + why + ". Broadcasting crypto packet to neighbors.", m);
                 broadcastEmergency(m);
             } else if (sos && clock - m.lastBeacon >= BEACON_EVERY) {
                 m.lastBeacon = clock;
@@ -313,7 +313,7 @@ public final class CrewMeshNetwork {
                 m.sosBroadcasted = false;
                 packets.removeIf(p -> p.from == m && p.type == PacketType.EMERGENCY);
                 for (CrewMemberState o : members) o.alerts.remove(m.getId());
-                event(Kind.OK, "🔕 Відбій: маячок " + m.shortName() + " вимкнено на всіх пристроях.", m);
+                event(Kind.OK, "🔕 Stand down: beacon of " + m.shortName() + " switched off on all devices.", m);
             }
         }
 
@@ -341,8 +341,8 @@ public final class CrewMeshNetwork {
                     CrewMemberState victim = byId(al.senderId);
                     if (victim != null) {
                         victim.setAnomalyActive(false); // у демо після допомоги показники повертаються до норми
-                        event(Kind.OK, "🤝 " + m.shortName() + " біля " + victim.shortName()
-                                + ". Допомога надається, показники стабілізуються.", victim);
+                        event(Kind.OK, "🤝 " + m.shortName() + " is next to " + victim.shortName()
+                                + ". Help is being given, vitals are stabilizing.", victim);
                     }
                 }
             }
@@ -357,7 +357,7 @@ public final class CrewMeshNetwork {
                     } else if (clock - v.stableSince >= 8) {
                         v.stableSince = -1;
                         v.clearSos(clock);
-                        event(Kind.OK, "🏁 " + v.shortName() + ": показники стабільні, SOS знято автоматично.", v);
+                        event(Kind.OK, "🏁 " + v.shortName() + ": vitals stable, SOS cleared automatically.", v);
                     }
                 } else {
                     v.stableSince = -1;
@@ -395,8 +395,8 @@ public final class CrewMeshNetwork {
     private void broadcastEmergency(CrewMemberState src) {
         if (!src.linkUp) {
             if (src.lastBeacon == clock) {
-                event(Kind.WARN, "⚠️ Пакет SOS від " + src.shortName()
-                        + " не вийшов в ефір: немає радіозв'язку. Повторю, щойно з'явиться сигнал.", src);
+                event(Kind.WARN, "⚠️ SOS packet from " + src.shortName()
+                        + " did not go on air: no radio link. Will retry as soon as a signal appears.", src);
             }
             return;
         }
@@ -415,11 +415,11 @@ public final class CrewMeshNetwork {
         if (!src.isSosActive()) return;   // пакет запізнився: SOS уже знято
         String plain = open(sealed);
         if (plain == null) {
-            event(Kind.WARN, "🔐 " + dst.shortName() + ": пакет відхилено (не пройшов перевірку AES-GCM).", dst);
+            event(Kind.WARN, "🔐 " + dst.shortName() + ": packet rejected (failed AES-GCM check).", dst);
             return;
         }
         String[] f = plain.split("\\|");
-        String summary = "пульс " + f[3] + " уд/хв · HRV " + f[4] + " мс · гідратація " + f[5] + "%";
+        String summary = "pulse " + f[3] + " bpm · HRV " + f[4] + " ms · hydration " + f[5] + "%";
         String pid = packetId(sealed);
 
         CrewMemberState.IncomingAlert al = dst.alerts.get(src.getId());
@@ -433,8 +433,8 @@ public final class CrewMeshNetwork {
         al.packetId = pid;
         al.summary = summary;
         if (fresh) {
-            event(Kind.RX, "📳🔊 " + dst.shortName() + ": отримано SOS від " + src.shortName()
-                    + " · AES-256-GCM ✔ · пакет #" + pid + " · ≈" + Math.round(al.distanceM) + " м", dst);
+            event(Kind.RX, "📳🔊 " + dst.shortName() + ": received SOS from " + src.shortName()
+                    + " · AES-256-GCM ✔ · packet #" + pid + " · ≈" + Math.round(al.distanceM) + " m", dst);
         }
     }
 
@@ -452,7 +452,7 @@ public final class CrewMeshNetwork {
             System.arraycopy(ct, 0, out, iv.length, ct.length);
             return out;
         } catch (Exception e) {
-            throw new IllegalStateException("Не вдалося зашифрувати пакет", e);
+            throw new IllegalStateException("Failed to encrypt the packet", e);
         }
     }
 

@@ -121,9 +121,9 @@ public final class AstronautView extends Pane {
         List<Hot> l = new ArrayList<>();
         l.add(hotFor(cx, hy - 3, MetricType.ICP_OPTIC));
         l.add(hotFor(cx + 16, hy + 68, MetricType.SPO2));
-        l.add(new Hot(cx, hy + 135, "Хребет у невагомості",
-                "Без ваги хребет розтягується приблизно на " + spineCm + " см. "
-                        + "Це нормально, але може боліти спина. Допомагають силові тренування."));
+        l.add(new Hot(cx, hy + 135, "Spine in zero gravity",
+                "Without gravity the spine stretches by about " + spineCm + " cm. "
+                        + "This is normal, but your back may ache. Strength training helps."));
         l.add(hotFor(cx + 40, hy + 150, MetricType.RADIATION_DOSE));
         l.add(hotFor(cx, hy + 75, MetricType.HEART_RATE));
         l.add(hotFor(cx - 14, hy + 100, MetricType.HRV));
@@ -134,10 +134,10 @@ public final class AstronautView extends Pane {
 
     private Hot hotFor(double x, double y, MetricType type) {
         double v = tel.getOrDefault(type, 0.0);
-        String st = inRange.test(type, v) ? "у нормі" : "поза нормою";
+        String st = inRange.test(type, v) ? "in range" : "out of range";
         return new Hot(x, y,
                 String.format(Locale.US, "%s: %.1f %s (%s)", type.title, v, type.unit, st),
-                hintOf.apply(type) + "\nНорма: " + HoloUi.num(type.minNominal) + "–"
+                hintOf.apply(type) + "\nNormal range: " + HoloUi.num(type.minNominal) + "–"
                         + HoloUi.num(type.maxNominal) + " " + type.unit);
     }
 
@@ -326,14 +326,14 @@ public final class AstronautView extends Pane {
         drawBrackets(gc, w, h, HoloUi.alpha(aura, 0.9));
         gc.setFont(Font.font("Consolas", FontWeight.BOLD, 27));
         gc.setFill(HoloUi.alpha(aura, 0.95));
-        gc.fillText("СКАНУВАННЯ ТІЛА", 22, 28);
+        gc.fillText("BODY SCAN", 22, 28);
         boolean blink = Math.sin(animationPulse * 3) > 0;
         gc.setFill(blink ? Color.rgb(229, 83, 95, 0.95) : Color.rgb(229, 83, 95, 0.3));
-        javafx.scene.text.Text liveProbe = new javafx.scene.text.Text("● НАЖИВО");
+        javafx.scene.text.Text liveProbe = new javafx.scene.text.Text("● LIVE");
         liveProbe.setFont(gc.getFont());
-        gc.fillText("● НАЖИВО", w - liveProbe.getLayoutBounds().getWidth() - 24, 28);
+        gc.fillText("● LIVE", w - liveProbe.getLayoutBounds().getWidth() - 24, 28);
         gc.setFill(Color.rgb(169, 183, 196, 0.8));
-        gc.fillText("Наведіть курсор на світну точку", 22, h - 18);
+        gc.fillText("Hover over a glowing dot", 22, h - 18);
     }
 
 
@@ -444,28 +444,28 @@ public final class AstronautView extends Pane {
         Color sansColor = icp > 18.0 ? Color.rgb(229, 83, 95, 0.95) : Color.rgb(68, 194, 142, 0.9);
         glowDot(gc, cx - 8, hy - 3, pulse, sansColor);
         glowDot(gc, cx + 8, hy - 3, pulse, sansColor);
-        if (callouts) drawCallout(gc, cx + 8, hy - 3, boxR, 18, true, "Тиск на нерв ока",
-                String.format(Locale.US, "%.1f мм рт.ст.", icp), sansColor);
+        if (callouts) drawCallout(gc, cx + 8, hy - 3, boxR, 18, true, "Optic nerve pressure",
+                String.format(Locale.US, "%.1f mmHg", icp), sansColor);
 
         // Кисень (легені)
         double spo2 = tel.get(MetricType.SPO2);
         Color spoColor = spo2 < 96 ? Color.rgb(232, 132, 60, 0.95) : Color.rgb(198, 216, 232, 0.9);
         glowDot(gc, cx + 16, hy + 68, pulse, spoColor);
-        if (callouts) drawCallout(gc, cx + 16, hy + 68, boxR, 92, true, "Кисень (SpO2)",
+        if (callouts) drawCallout(gc, cx + 16, hy + 68, boxR, 92, true, "Oxygen (SpO2)",
                 String.format(Locale.US, "%.1f %%", spo2), spoColor);
 
         // Хребет
         Color spineColor = Color.rgb(154, 168, 255, 0.9);
         glowDot(gc, cx, hy + 135, pulse, spineColor);
-        if (callouts) drawCallout(gc, cx, hy + 135, boxR, 166, true, "Хребет у невагомості",
-                String.format(Locale.US, "+%.1f см", spineCm), spineColor);
+        if (callouts) drawCallout(gc, cx, hy + 135, boxR, 166, true, "Spine in zero gravity",
+                String.format(Locale.US, "+%.1f cm", spineCm), spineColor);
 
         // Радіація
         double rad = tel.get(MetricType.RADIATION_DOSE);
         Color radColor = rad > 100 ? Color.rgb(229, 83, 95, 0.95) : Color.rgb(68, 194, 142, 0.9);
         glowDot(gc, cx + 40, hy + 150, pulse, radColor);
-        if (callouts) drawCallout(gc, cx + 40, hy + 150, boxR, 240, true, "Доза радіації",
-                String.format(Locale.US, "%.1f мЗв", rad), radColor);
+        if (callouts) drawCallout(gc, cx + 40, hy + 150, boxR, 240, true, "Radiation dose",
+                String.format(Locale.US, "%.1f mSv", rad), radColor);
 
         // Серце: б'ється з частотою пульсу
         double hr = tel.get(MetricType.HEART_RATE);
@@ -474,20 +474,20 @@ public final class AstronautView extends Pane {
         Color heartColor = heartWarn ? Color.rgb(232, 132, 60, 0.95) : Color.rgb(157, 183, 206, 0.9);
         double beat = 0.5 + 0.5 * Math.sin(heartPhase);
         glowDot(gc, cx, hy + 75, 5 + 6 * beat * beat, heartColor);
-        if (callouts) drawCallout(gc, cx, hy + 75, boxL, 96, false, "Пульс",
-                String.format(Locale.US, "%.0f уд/хв", hr), heartColor);
+        if (callouts) drawCallout(gc, cx, hy + 75, boxL, 96, false, "Pulse",
+                String.format(Locale.US, "%.0f bpm", hr), heartColor);
 
         // Стрес-баланс серця
         Color hrvColor = hrv < 40 ? Color.rgb(232, 132, 60, 0.95) : Color.rgb(157, 183, 206, 0.9);
         glowDot(gc, cx - 14, hy + 100, pulse, hrvColor);
-        if (callouts) drawCallout(gc, cx - 14, hy + 100, boxL, 162, false, "Стрес-баланс (HRV)",
-                String.format(Locale.US, "%.1f мс", hrv), hrvColor);
+        if (callouts) drawCallout(gc, cx - 14, hy + 100, boxL, 162, false, "Stress balance (HRV)",
+                String.format(Locale.US, "%.1f ms", hrv), hrvColor);
 
         // Вода
         double hyd = tel.get(MetricType.HYDRATION);
         Color hydColor = hyd < 90 ? Color.rgb(232, 132, 60, 0.95) : Color.rgb(198, 216, 232, 0.9);
         glowDot(gc, cx, hy + 160, pulse, hydColor);
-        if (callouts) drawCallout(gc, cx, hy + 160, boxL, 228, false, "Запас води",
+        if (callouts) drawCallout(gc, cx, hy + 160, boxL, 228, false, "Water reserve",
                 String.format(Locale.US, "%.0f %%", hyd), hydColor);
 
         // Кістки ніг
@@ -495,7 +495,7 @@ public final class AstronautView extends Pane {
         Color boneColor = bone < 97 ? Color.rgb(229, 83, 95, 0.95) : Color.rgb(230, 178, 62, 0.9);
         glowDot(gc, cx - 26, hy + 285, pulse, boneColor);
         glowDot(gc, cx + 26, hy + 285, pulse, boneColor);
-        if (callouts) drawCallout(gc, cx - 26, hy + 285, boxL, 330, false, "Міцність кісток",
+        if (callouts) drawCallout(gc, cx - 26, hy + 285, boxL, 330, false, "Bone strength",
                 String.format(Locale.US, "%.1f %%", bone), boneColor);
 
         // Підсвітка точки, на яку навели курсор

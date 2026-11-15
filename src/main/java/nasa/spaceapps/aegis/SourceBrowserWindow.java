@@ -54,7 +54,7 @@ public final class SourceBrowserWindow {
     private SourceBrowserWindow(Window owner, Consumer<String> openExternally) {
         this.openExternally = openExternally;
         if (owner != null) stage.initOwner(owner);
-        stage.setTitle("VITAL: джерела");
+        stage.setTitle("VITAL: sources");
         stage.setWidth(1100);
         stage.setHeight(760);
 
@@ -65,7 +65,7 @@ public final class SourceBrowserWindow {
 
         Button back = new Button("◀");
         back.setStyle(BTN);
-        back.setTooltip(new Tooltip("Назад"));
+        back.setTooltip(new Tooltip("Back"));
         back.disableProperty().bind(history.currentIndexProperty().lessThanOrEqualTo(0));
         back.setOnAction(e -> {
             if (history.getCurrentIndex() > 0) history.go(-1);
@@ -73,7 +73,7 @@ public final class SourceBrowserWindow {
 
         Button forward = new Button("▶");
         forward.setStyle(BTN);
-        forward.setTooltip(new Tooltip("Уперед"));
+        forward.setTooltip(new Tooltip("Forward"));
         forward.disableProperty().bind(history.currentIndexProperty()
                 .greaterThanOrEqualTo(Bindings.size(history.getEntries()).subtract(1)));
         forward.setOnAction(e -> {
@@ -82,7 +82,7 @@ public final class SourceBrowserWindow {
 
         Button reload = new Button("⟳");
         reload.setStyle(BTN);
-        reload.setTooltip(new Tooltip("Оновити"));
+        reload.setTooltip(new Tooltip("Reload"));
         reload.setOnAction(e -> engine.reload());
 
         Label address = new Label();
@@ -91,9 +91,9 @@ public final class SourceBrowserWindow {
         address.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(address, Priority.ALWAYS);
 
-        Button external = new Button("↗ У браузері");
+        Button external = new Button("↗ In browser");
         external.setStyle(BTN);
-        external.setTooltip(new Tooltip("Відкрити цю сторінку у системному браузері"));
+        external.setTooltip(new Tooltip("Open this page in the system browser"));
         external.setOnAction(e -> openExternally.accept(currentUrl()));
 
         Button close = new Button("✕");
@@ -116,10 +116,10 @@ public final class SourceBrowserWindow {
         errorText.setWrapText(true);
         errorText.setMaxWidth(520);
         errorText.setStyle("-fx-text-fill: #E2E8F0; -fx-font-size: 28px;");
-        Button retry = new Button("Спробувати ще раз");
+        Button retry = new Button("Try again");
         retry.setStyle(BTN);
         retry.setOnAction(e -> engine.load(requestedUrl));
-        Button openOut = new Button("Відкрити у браузері");
+        Button openOut = new Button("Open in browser");
         openOut.setStyle("-fx-background-color: #0284C7; -fx-text-fill: white; -fx-background-radius: 6; -fx-cursor: hand;");
         openOut.setOnAction(e -> openExternally.accept(currentUrl()));
         HBox errButtons = new HBox(10, retry, openOut);
@@ -132,9 +132,9 @@ public final class SourceBrowserWindow {
 
         engine.getLoadWorker().stateProperty().addListener((obs, old, state) -> {
             if (state == Worker.State.FAILED) {
-                errorText.setText("Не вдалося завантажити сторінку.\nПеревірте інтернет-з'єднання: "
-                        + "застосунок працює офлайн, а джерела потребують мережі. "
-                        + "Деякі сайти можуть не відкриватись у вбудованому переглядачі.");
+                errorText.setText("Could not load the page.\nCheck your internet connection: "
+                        + "the app works offline, but the sources need a network. "
+                        + "Some sites may not open in the built-in viewer.");
                 errorBox.setVisible(true);
             } else if (state == Worker.State.RUNNING || state == Worker.State.SUCCEEDED) {
                 errorBox.setVisible(false);

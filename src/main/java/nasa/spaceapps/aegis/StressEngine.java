@@ -13,10 +13,10 @@ import java.util.List;
 public final class StressEngine {
 
     public enum Level {
-        LOW("Спокійно", "#34D399"),
-        MEDIUM("Напруга", "#FBBF24"),
-        HIGH("Високий стрес", "#F97316"),
-        CRITICAL("Критично", "#EF4444");
+        LOW("Calm", "#34D399"),
+        MEDIUM("Tension", "#FBBF24"),
+        HIGH("High stress", "#F97316"),
+        CRITICAL("Critical", "#EF4444");
 
         public final String label;
         public final String color;
@@ -91,18 +91,18 @@ public final class StressEngine {
 
         List<String> reasons = new ArrayList<>();
         if (r.sleepHours() < 6) {
-            reasons.add(String.format(java.util.Locale.US, "мало сну (%.1f год)", r.sleepHours()));
+            reasons.add(String.format(java.util.Locale.US, "low sleep (%.1f h)", r.sleepHours()));
         }
         if (r.hrv() < 45) {
-            reasons.add(String.format(java.util.Locale.US, "низький стрес-баланс серця HRV (%.0f мс)", r.hrv()));
+            reasons.add(String.format(java.util.Locale.US, "low heart stress balance, HRV (%.0f ms)", r.hrv()));
         }
         if (r.hr() > 100) {
-            reasons.add(String.format(java.util.Locale.US, "підвищений пульс (%.0f уд/хв)", r.hr()));
+            reasons.add(String.format(java.util.Locale.US, "elevated pulse (%.0f bpm)", r.hr()));
         } else if (r.hr() < 55) {
-            reasons.add(String.format(java.util.Locale.US, "низький пульс (%.0f уд/хв)", r.hr()));
+            reasons.add(String.format(java.util.Locale.US, "low pulse (%.0f bpm)", r.hr()));
         }
         if (r.hydration() < 90) {
-            reasons.add(String.format(java.util.Locale.US, "не вистачає води (%.0f%%)", r.hydration()));
+            reasons.add(String.format(java.util.Locale.US, "not enough water (%.0f%%)", r.hydration()));
         }
 
         latest = new Assessment((int) Math.round(smoothed), level, List.copyOf(reasons), sustained);
@@ -147,12 +147,12 @@ public final class StressEngine {
     /** Заздалегідь підготовлений протокол реагування за рівнем (без генерації тексту). */
     public static String protocolFor(Level level) {
         return switch (level) {
-            case LOW -> "Усе спокійно. Можна зробити короткий чек-ін настрою або легку розминку.";
-            case MEDIUM -> "Помітна напруга. Спробуйте дихання 4-4-4-4 (близько 1 хвилини).";
-            case HIGH -> "Високий стрес. Зробіть дихання 4-4-4-4, потім вправу «5-4-3-2-1». "
-                    + "Усуньте причини нижче: вода, сон, відпочинок.";
-            case CRITICAL -> "Критичний рівень. Зупиніть роботу, зробіть дихання, повідомте екіпаж "
-                    + "і надішліть сигнал SOS у центр керування на Землі кнопкою нижче.";
+            case LOW -> "All calm. You can do a short mood check-in or a light warm-up.";
+            case MEDIUM -> "Noticeable tension. Try 4-4-4-4 breathing (about 1 minute).";
+            case HIGH -> "High stress. Do 4-4-4-4 breathing, then the “5-4-3-2-1” exercise. "
+                    + "Remove the causes listed below: water, sleep, rest.";
+            case CRITICAL -> "Critical level. Stop work, do the breathing exercise, notify the crew "
+                    + "and send an SOS signal to mission control on Earth with the button below.";
         };
     }
 }

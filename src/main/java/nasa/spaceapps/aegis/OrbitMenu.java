@@ -126,8 +126,8 @@ public final class OrbitMenu extends Pane {
     private final Circle dashRing = new Circle(95);
     private final Canvas logo = new Canvas();
     private final Label title = new Label("VITAL");
-    private final Label verdict = new Label("Усе гаразд");
-    private final Label hint = new Label("Оберіть розділ");
+    private final Label verdict = new Label("All good");
+    private final Label hint = new Label("Choose a section");
 
     private Consumer<String> onSelect;
 

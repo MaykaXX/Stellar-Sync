@@ -68,7 +68,7 @@ public final class SourceLinks {
         Hyperlink h = new Hyperlink(text);
         h.setStyle(LINK_STYLE);
         h.setFocusTraversable(false);
-        h.setTooltip(new Tooltip(url + "\nКлік відкриє сторінку у вікні застосунку"));
+        h.setTooltip(new Tooltip(url + "\nClick to open the page inside the app"));
         h.setOnAction(e -> open(url));
         return h;
     }

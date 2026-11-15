@@ -107,6 +107,6 @@ public final class HeartMonitor extends Canvas {
         gc.setFont(Font.font("Consolas", 36));
         gc.fillText(String.format(Locale.US, "%.0f", bpm), 12, 30);
         gc.setFont(Font.font("Consolas", 16.5));
-        gc.fillText("уд/хв", 12, 46);
+        gc.fillText("bpm", 12, 46);
     }
 }

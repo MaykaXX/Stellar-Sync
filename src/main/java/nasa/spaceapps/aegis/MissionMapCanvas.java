@@ -130,7 +130,7 @@ public final class MissionMapCanvas extends Canvas {
         g.fillOval(sx - sunR * 1.7, sy - sunR * 1.7, sunR * 3.4, sunR * 3.4);
         g.setFill(Color.web("#FBBF24"));
         g.fillOval(sx - sunR, sy - sunR, sunR * 2, sunR * 2);
-        label(g, "СОНЦЕ", sx, sy + sunR * 3.4, Color.web("#94A3B8"), 11, false);
+        label(g, "SUN", sx, sy + sunR * 3.4, Color.web("#94A3B8"), 11, false);
 
         // Земля
         g.setFill(Color.color(0.22, 0.74, 0.97, 0.07));
@@ -142,13 +142,13 @@ public final class MissionMapCanvas extends Canvas {
         double moonX = ex + earthR * 2.6 * Math.cos(0.6), moonY = ey + earthR * 2.6 * Math.sin(0.6);
         g.setFill(Color.web("#E2E8F0"));
         g.fillOval(moonX - 3.5, moonY - 3.5, 7, 7);
-        label(g, "ЗЕМЛЯ", ex, ey + earthR * 3.6, Color.web("#94A3B8"), 11, false);
+        label(g, "EARTH", ex, ey + earthR * 3.6, Color.web("#94A3B8"), 11, false);
 
         // Марс
         g.setFill(Color.color(0.95, 0.4, 0.1, 0.10));
         g.fillOval(mx - marsR * 1.6, my - marsR * 1.6, marsR * 3.2, marsR * 3.2);
         halfPlanet(g, mx, my, marsR, Color.web("#F97316"), Color.web("#9A3412"));
-        label(g, "МАРС", mx, my + marsR * 3.0, Color.web("#94A3B8"), 11, false);
+        label(g, "MARS", mx, my + marsR * 3.0, Color.web("#94A3B8"), 11, false);
 
         // позиція корабля
         double shipX, shipY;
@@ -196,7 +196,7 @@ public final class MissionMapCanvas extends Canvas {
             double xx = stopX - 6;
             g.strokeLine(xx - 6, sy - 6, xx + 6, sy + 6);
             g.strokeLine(xx - 6, sy + 6, xx + 6, sy - 6);
-            label(g, "СИГНАЛ ЗАБЛОКОВАНО", sx, sy - sunR * 3.1, Color.web("#FCA5A5"), 11, true);
+            label(g, "SIGNAL BLOCKED", sx, sy - sunR * 3.1, Color.web("#FCA5A5"), 11, true);
         } else {
             boolean arc = loc == AegisBioApp.MissionLocation.MARS_TRANSIT;
             double ts = 0.38;
@@ -233,14 +233,14 @@ public final class MissionMapCanvas extends Canvas {
         g.setFill(Color.WHITE);
         g.fillPolygon(new double[]{shipX, shipX - 5.5, shipX + 5.5},
                 new double[]{shipY - 6, shipY + 5, shipY + 5}, 3);
-        label(g, "ВИ ТУТ", shipX, shipY - 17, Color.WHITE, 11, true);
+        label(g, "YOU ARE HERE", shipX, shipY - 17, Color.WHITE, 11, true);
 
         // підпис затримки сигналу
         String lat = switch (loc) {
-            case LEO -> "Сигнал до Землі: майже миттєво";
-            case MOON -> "Сигнал до Землі: ~1,3 с";
-            case MARS_TRANSIT -> "Сигнал до Землі: ~14 хв";
-            case SOLAR_CONJUNCTION -> "Зв'язок відсутній (0 bps)";
+            case LEO -> "Signal to Earth: almost instant";
+            case MOON -> "Signal to Earth: ~1.3 s";
+            case MARS_TRANSIT -> "Signal to Earth: ~14 min";
+            case SOLAR_CONJUNCTION -> "No connection (0 bps)";
         };
         Color latColor = blackout ? Color.web("#FCA5A5") : Color.web("#7DD3FC");
         Text probe = new Text(lat);

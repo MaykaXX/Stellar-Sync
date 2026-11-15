@@ -48,7 +48,7 @@ public final class MerkleTreeView extends Canvas {
         if (levels.isEmpty()) {
             g.setFill(Color.web("#94A3B8"));
             g.setFont(Font.font("Consolas", FontWeight.NORMAL, 20));
-            g.fillText("Дерево з'явиться, коли в буфері буде перший пакет", w / 2, h / 2);
+            g.fillText("The tree will appear once the buffer has its first packet", w / 2, h / 2);
             return;
         }
 
@@ -92,8 +92,8 @@ public final class MerkleTreeView extends Canvas {
         g.setFill(Color.web("#A3B1C6"));
         long perNode = 1L << bottomLevel;
         String caption = bottomLevel == 0
-                ? "Нижній ряд: хеші окремих пакетів"
-                : "Нижній ряд: кожен вузол = хеш групи з " + perNode + " пакетів";
+                ? "Bottom row: hashes of individual packets"
+                : "Bottom row: each node = hash of a group of " + perNode + " packets";
         g.fillText(caption, w / 2, h - 10);
     }
 

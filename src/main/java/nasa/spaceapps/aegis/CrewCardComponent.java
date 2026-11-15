@@ -35,8 +35,8 @@ public final class CrewCardComponent extends VBox {
     private final Button anomalyBtn = new Button();
     private final Button linkBtn = new Button();
     private final Button sosBtn = new Button();
-    private final Button pingBtn = new Button("💬 Усе гаразд?");
-    private final Button okBtn = new Button("✅ Усе гаразд");
+    private final Button pingBtn = new Button("💬 All good?");
+    private final Button okBtn = new Button("✅ All good");
 
     // показники
     private final Label hrVal = new Label(), hrvVal = new Label(), hydVal = new Label();
@@ -46,24 +46,24 @@ public final class CrewCardComponent extends VBox {
     private final HBox timerStrip = new HBox(12);
     private final Label timerText = new Label();
     private final ProgressBar timerBar = new ProgressBar(1);
-    private final Button ackBtn = new Button("✅ Усе гаразд");
+    private final Button ackBtn = new Button("✅ All good");
 
     // смуга 2: власний SOS
     private final HBox sosStrip = new HBox(12);
     private final Label sosText = new Label();
-    private final Button cancelBtn = new Button("✅ Усе гаразд (відбій)");
+    private final Button cancelBtn = new Button("✅ All good (stand down)");
 
     // смуга-підтвердження: коротко показує, що кнопка спрацювала
     private final HBox okStrip = new HBox(10);
-    private final Label okText = new Label("✅ Підтверджено: тривогу скасовано. Показники повертаються до норми.");
+    private final Label okText = new Label("✅ Confirmed: alarm cancelled. Vitals are returning to normal.");
     private double okUntil = -1;
 
     // смуга 3: вхідний SOS від сусіда
     private final HBox rxStrip = new HBox(12);
     private final Label rxText = new Label();
-    private final Button goBtn = new Button("🏃 Іду на допомогу");
-    private final Button muteBtn = new Button("🔇 Заглушити");
-    private final Button doneBtn = new Button("✅ Допомогу надано");
+    private final Button goBtn = new Button("🏃 On my way to help");
+    private final Button muteBtn = new Button("🔇 Mute");
+    private final Button doneBtn = new Button("✅ Help provided");
 
     private boolean renderToggle = false;
     private String lastRxStyle = "";
@@ -110,7 +110,7 @@ public final class CrewCardComponent extends VBox {
         StackPane.setAlignment(statusDot, Pos.BOTTOM_RIGHT);
         avatarPane.getChildren().addAll(avatarNode, statusDot);
 
-        Label nameLabel = new Label(m.getName() + (m.isLocal() ? "  · це ваш пристрій" : ""));
+        Label nameLabel = new Label(m.getName() + (m.isLocal() ? "  · this is your device" : ""));
         nameLabel.setStyle("-fx-text-fill: #F1F5F9; -fx-font-weight: bold; -fx-font-size: 28px;");
         Label roleLabel = new Label(m.getRole() + "  ·  " + m.getId());
         roleLabel.setStyle("-fx-text-fill: #A3B1C6; -fx-font-size: 22px;");
@@ -139,9 +139,9 @@ public final class CrewCardComponent extends VBox {
 
     private Node buildMetrics() {
         VBox tiles = new VBox(6,
-                tile("❤", "Пульс", hrVal),
-                tile("📊", "Стрес-баланс", hrvVal),
-                tile("💧", "Гідратація", hydVal));
+                tile("❤", "Pulse", hrVal),
+                tile("📊", "Stress balance", hrvVal),
+                tile("💧", "Hydration", hydVal));
         tiles.setMinWidth(190);
         tiles.setPrefWidth(190);
 
@@ -193,8 +193,8 @@ public final class CrewCardComponent extends VBox {
     /** Усі кнопки «Усе гаразд» роблять те саме. */
     private void confirmOk() {
         boolean hadAlarm = net.acknowledge(m);
-        flashOk(hadAlarm ? "✅ Підтверджено: тривогу скасовано. Показники повертаються до норми."
-                : "✅ Стан підтверджено: усе гаразд.");
+        flashOk(hadAlarm ? "✅ Confirmed: alarm cancelled. Vitals are returning to normal."
+                : "✅ Status confirmed: all good.");
     }
 
     private Node buildTimerStrip() {
@@ -235,7 +235,7 @@ public final class CrewCardComponent extends VBox {
         styleButton(goBtn, "#B45309", "#FBBF24");
         styleButton(muteBtn, "#1E293B", "#A3B1C6");
         styleButton(doneBtn, "#059669", "#34D399");
-        doneBtn.setText("✅ Відбій");
+        doneBtn.setText("✅ Stand down");
         rxStrip.setAlignment(Pos.CENTER_LEFT);
         rxStrip.setPadding(new Insets(9, 12, 9, 12));
         rxStrip.setStyle("-fx-background-color: rgba(120,53,15,0.40); -fx-border-color: #F59E0B; "
@@ -371,8 +371,8 @@ public final class CrewCardComponent extends VBox {
         if (now - lastTextUpdate < 0.2 && lastTextUpdate >= 0) return;
         lastTextUpdate = now;
 
-        hrVal.setText(m.isOffline() ? "— (немає сигналу)" : String.format(Locale.US, "%.0f уд/хв", m.getHr()));
-        hrvVal.setText(m.isOffline() ? "—" : String.format(Locale.US, "%.0f мс", m.getHrv()));
+        hrVal.setText(m.isOffline() ? "— (no signal)" : String.format(Locale.US, "%.0f bpm", m.getHr()));
+        hrvVal.setText(m.isOffline() ? "—" : String.format(Locale.US, "%.0f ms", m.getHrv()));
         hydVal.setText(m.isOffline() ? "—" : String.format(Locale.US, "%.0f %%", m.getHydration()));
         hrVal.setStyle(valueStyle(m.getHr() > 105 || m.getHr() < 55, m.getHr() > 125 || m.getHr() < 45));
         hrvVal.setStyle(valueStyle(m.getHrv() < 40, m.getHrv() < 25));
@@ -391,12 +391,12 @@ public final class CrewCardComponent extends VBox {
 
         double d = m.isLocal() ? 0 : net.distanceM(net.local(), m);
         subLabel.setText("📍 " + m.getCompartment()
-                + (m.isLocal() ? "" : String.format(Locale.US, "  ·  ≈%.0f м від вас", d))
-                + "  ·  📶 Mesh: " + (m.isOffline() ? "втрачено" : m.isLinkUp() ? "активний" : "передавач вимкнено"));
+                + (m.isLocal() ? "" : String.format(Locale.US, "  ·  ≈%.0f m from you", d))
+                + "  ·  📶 Mesh: " + (m.isOffline() ? "lost" : m.isLinkUp() ? "active" : "transmitter off"));
 
-        anomalyBtn.setText(m.isAnomalyActive() ? "⏹ Зупинити збій" : "⚡ Збій (демо)");
-        linkBtn.setText(m.isLinkUp() ? "📡 Зв'язок: ВКЛ" : "📡 Зв'язок: ВИКЛ");
-        sosBtn.setText(m.isSosActive() ? "🚨 SOS АКТИВНИЙ" : "🚨 Маячок SOS");
+        anomalyBtn.setText(m.isAnomalyActive() ? "⏹ Stop fault" : "⚡ Fault (demo)");
+        linkBtn.setText(m.isLinkUp() ? "📡 Link: ON" : "📡 Link: OFF");
+        sosBtn.setText(m.isSosActive() ? "🚨 SOS ACTIVE" : "🚨 SOS beacon");
         sosBtn.setStyle("-fx-background-color: " + (m.isSosActive() ? "#B91C1C" : "#1E293B") + "; -fx-text-fill: white; "
                 + "-fx-font-weight: bold; -fx-font-size: 22px; -fx-cursor: hand; -fx-padding: 5 10; "
                 + "-fx-background-radius: 6; -fx-border-radius: 6; -fx-border-color: #EF4444;");
@@ -404,8 +404,8 @@ public final class CrewCardComponent extends VBox {
         // смуга: таймер підтвердження
         show(timerStrip, timer);
         if (timer) {
-            timerText.setText("⚠️ Аномалія: " + m.getAnomalyText() + ". Автоматичний SOS через "
-                    + (int) Math.ceil(remain) + " с, якщо не підтвердити");
+            timerText.setText("⚠️ Anomaly: " + m.getAnomalyText() + ". Automatic SOS in "
+                    + (int) Math.ceil(remain) + " s unless confirmed");
         }
 
         // смуга: власний SOS
@@ -413,15 +413,15 @@ public final class CrewCardComponent extends VBox {
         if (m.isSosActive()) {
             int total = net.members().size() - 1;
             StringBuilder sb = new StringBuilder(m.isAutoSos()
-                    ? "🚨 АВТОМАТИЧНИЙ SOS: підтвердження не надійшло. " : "🚨 Ручний SOS-маячок. ");
-            sb.append("Крипто-пакет (AES-256-GCM) отримали ").append(net.deliveredCount(m)).append(" з ")
-                    .append(total).append(" пристроїв.");
+                    ? "🚨 AUTOMATIC SOS: no confirmation received. " : "🚨 Manual SOS beacon. ");
+            sb.append("Crypto packet (AES-256-GCM) received by ").append(net.deliveredCount(m)).append(" of ")
+                    .append(total).append(" devices.");
             List<CrewMeshNetwork.Helper> helpers = net.helpersOf(m);
             for (CrewMeshNetwork.Helper h : helpers) {
                 sb.append(h.alert().arrived
-                        ? "\n🤝 " + h.helper().shortName() + " на місці."
-                        : "\n🏃 " + h.helper().shortName() + " в дорозі, ще "
-                        + Math.max(0, Math.round(h.alert().respondDuration * (1 - h.alert().progress(now)))) + " с.");
+                        ? "\n🤝 " + h.helper().shortName() + " is on site."
+                        : "\n🏃 " + h.helper().shortName() + " is on the way, "
+                        + Math.max(0, Math.round(h.alert().respondDuration * (1 - h.alert().progress(now)))) + " s left.");
             }
             sosText.setText(sb.toString());
         }
@@ -440,14 +440,14 @@ public final class CrewCardComponent extends VBox {
             }
             int more = m.getAlerts().size() - 1;
             String head = rx.handled
-                    ? "🤝 Допомога на місці: " + rx.senderName + ". Звук вимкнено, стан стабілізується."
-                    : "📳🔊 SOS від " + rx.senderName + (more > 0 ? "  (+" + more + ")" : "");
+                    ? "🤝 Help on site: " + rx.senderName + ". Sound muted, condition is stabilizing."
+                    : "📳🔊 SOS from " + rx.senderName + (more > 0 ? "  (+" + more + ")" : "");
             StringBuilder sb = new StringBuilder(head).append("\n").append(rx.summary)
-                    .append("\n🔐 AES-GCM ✔ · пакет #").append(rx.packetId)
-                    .append(String.format(Locale.US, " · ≈%.0f м · %d dBm", rx.distanceM, rx.rssi));
+                    .append("\n🔐 AES-GCM ✔ · packet #").append(rx.packetId)
+                    .append(String.format(Locale.US, " · ≈%.0f m · %d dBm", rx.distanceM, rx.rssi));
             if (rx.responding && !rx.arrived && !rx.handled) {
-                sb.append("\n🏃 Ви в дорозі: ще ")
-                        .append(Math.max(0, Math.round(rx.respondDuration * (1 - rx.progress(now))))).append(" с");
+                sb.append("\n🏃 You are on the way, ")
+                        .append(Math.max(0, Math.round(rx.respondDuration * (1 - rx.progress(now))))).append(" s left");
             }
             rxText.setText(sb.toString());
             show(goBtn, !rx.responding && !rx.handled);

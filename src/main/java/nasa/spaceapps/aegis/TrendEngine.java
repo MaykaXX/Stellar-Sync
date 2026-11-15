@@ -50,7 +50,7 @@ public final class TrendEngine<K extends Enum<K>> {
      */
     public TrendEngine(Class<K> keyType, int capacity, int window, int minSamples) {
         if (capacity < 2 || window < 2 || minSamples < 2 || minSamples > window || window > capacity) {
-            throw new IllegalArgumentException("Некоректні параметри TrendEngine");
+            throw new IllegalArgumentException("Invalid TrendEngine parameters");
         }
         this.keyType = keyType;
         this.capacity = capacity;

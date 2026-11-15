@@ -16,12 +16,12 @@ import java.util.function.Consumer;
 final class ActivityJournal {
 
     enum Status {
-        CONFIRMED("✔ Виконано, підтверджено", false),
-        SELF_REPORTED("● Відмічено вручну", false),
-        AUTO("🤖 Виконав автопілот / MindCare", false),
-        ABORTED("✖ Не завершено", true),
-        SUSPICIOUS("⚠ Підозріло", true),
-        INACTIVITY("⚠ Немає активності", true);
+        CONFIRMED("✔ Completed, confirmed", false),
+        SELF_REPORTED("● Marked manually", false),
+        AUTO("🤖 Done by autopilot / MindCare", false),
+        ABORTED("✖ Not completed", true),
+        SUSPICIOUS("⚠ Suspicious", true),
+        INACTIVITY("⚠ No activity", true);
 
         final String label;
         /** Чи вимагає запис уваги (показується в журналі та логах як попередження). */
@@ -73,7 +73,7 @@ final class ActivityJournal {
     String begin(String id, String title, long requiredSec, long nowSec, long nowMs) {
         registerPress(nowSec, nowMs);
         if (active != null) {
-            return "Спочатку завершіть або скасуйте поточну дію: " + active.title() + ".";
+            return "First finish or cancel the current action: " + active.title() + ".";
         }
         active = new Session(id, title, nowSec, Math.max(1, requiredSec));
         return null;
@@ -99,7 +99,7 @@ final class ActivityJournal {
         active = null;
         lastConfirmedSec = nowSec;
         return add(new Entry(nowSec, s.title(), Status.CONFIRMED, s.requiredSec(), nowSec - s.startSec(),
-                "Підтверджено після повної тривалості."));
+                "Confirmed after the full duration."));
     }
 
     /** Скасування або дострокове завершення. Показники не змінюються. */
@@ -110,7 +110,7 @@ final class ActivityJournal {
         active = null;
         long done = Math.min(s.requiredSec(), Math.max(0, nowSec - s.startSec()));
         return add(new Entry(nowSec, s.title(), Status.ABORTED, s.requiredSec(), done,
-                "Дію не завершено: минуло " + formatSec(done) + " із " + formatSec(s.requiredSec()) + ". Показники не змінено."));
+                "Action not completed: " + formatSec(done) + " of " + formatSec(s.requiredSec()) + " elapsed. Metrics were not changed."));
     }
 
     /** Відмова системи виконати дію (ліміт, перерва). Саме натискання враховується для виявлення «натикування». */
@@ -143,8 +143,8 @@ final class ActivityJournal {
         if (since < INACTIVITY_SEC) return null;
         if (lastInactivityFlagSec != Long.MIN_VALUE && nowSec - lastInactivityFlagSec < INACTIVITY_SEC) return null;
         lastInactivityFlagSec = nowSec;
-        return add(new Entry(nowSec, "Немає підтверджених дій", Status.INACTIVITY, 0, since,
-                "Минуло " + formatSec(since) + " без жодної підтвердженої дії, хоча є підказки, які потребують виконання."));
+        return add(new Entry(nowSec, "No confirmed actions", Status.INACTIVITY, 0, since,
+                "It has been " + formatSec(since) + " without any confirmed action, even though there are hints that require action."));
     }
 
     // ---------- виявлення «натикування» ----------
@@ -157,8 +157,8 @@ final class ActivityJournal {
             lastMashFlagMs = nowMs;
             int n = pressTimes.size();
             pressTimes.clear();
-            add(new Entry(nowSec, "Серія швидких натискань", Status.SUSPICIOUS, 0, 0,
-                    n + " натискань кнопок за " + (MASH_WINDOW_MS / 1000) + " с. Схоже на натикування без реального виконання дій."));
+            add(new Entry(nowSec, "Burst of rapid clicks", Status.SUSPICIOUS, 0, 0,
+                    n + " button presses in " + (MASH_WINDOW_MS / 1000) + " s. Looks like button mashing without actually performing the actions."));
         }
     }
 
@@ -199,11 +199,11 @@ final class ActivityJournal {
 
     static String formatSec(long sec) {
         sec = Math.max(0, sec);
-        if (sec < 60) return sec + " с";
-        if (sec < 3600) return (sec / 60) + " хв" + (sec % 60 == 0 ? "" : " " + (sec % 60) + " с");
+        if (sec < 60) return sec + " s";
+        if (sec < 3600) return (sec / 60) + " min" + (sec % 60 == 0 ? "" : " " + (sec % 60) + " s");
         long h = sec / 3600;
         long m = (sec % 3600) / 60;
-        return h + " год" + (m == 0 ? "" : " " + m + " хв");
+        return h + " h" + (m == 0 ? "" : " " + m + " min");
     }
 
     /** Короткий текст «ММ:СС» або «Г:ММ:СС» для лічильника. */

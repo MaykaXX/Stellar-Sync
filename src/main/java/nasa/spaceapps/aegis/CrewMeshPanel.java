@@ -66,14 +66,14 @@ public final class CrewMeshPanel extends VBox {
         getChildren().addAll(top, cardsBlock);
 
         addLogLine(new CrewMeshNetwork.MeshEvent(CrewMeshNetwork.Kind.INFO,
-                "🕸️ Mesh запущено: " + net.members().size() + " вузли, ключ екіпажу AES-256 узгоджено.", null));
+                "🕸️ Mesh started: " + net.members().size() + " nodes, crew AES-256 key agreed.", null));
         refreshChips();
     }
 
     // ============ ПОБУДОВА ============
     private VBox buildMapBlock() {
-        Label hint = new Label("Пристрої екіпажу з'єднані напряму (Bluetooth), без центрального сервера. "
-                + "Кожен стежить за сусідами, а при небезпеці розсилає їм зашифрований сигнал.");
+        Label hint = new Label("Crew devices are connected directly (Bluetooth), with no central server. "
+                + "Each one watches its neighbors and, in danger, sends them an encrypted signal.");
         hint.setWrapText(true);
         hint.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 22px;");
 
@@ -81,16 +81,16 @@ public final class CrewMeshPanel extends VBox {
         sosChip.setMinWidth(Region.USE_PREF_SIZE);
         Label crypto = HoloUi.chip("🔐 AES-256-GCM", HoloUi.PURPLE);
 
-        CheckBox fast = new CheckBox("Швидкий демо-таймер (15 с замість 60 с)");
+        CheckBox fast = new CheckBox("Fast demo timer (15 s instead of 60 s)");
         fast.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 22px;");
         fast.setOnAction(e -> net.setConfirmWindow(fast.isSelected() ? 15 : 60));
 
-        ToggleButton sound = new ToggleButton("🔊 Звук");
+        ToggleButton sound = new ToggleButton("🔊 Sound");
         sound.setSelected(true);
         sound.setStyle("-fx-font-size: 22px; -fx-cursor: hand;");
         sound.setOnAction(e -> {
             MeshSound.setMuted(!sound.isSelected());
-            sound.setText(sound.isSelected() ? "🔊 Звук" : "🔇 Без звуку");
+            sound.setText(sound.isSelected() ? "🔊 Sound" : "🔇 Muted");
         });
 
         Region sp = new Region();
@@ -106,7 +106,7 @@ public final class CrewMeshPanel extends VBox {
             else net.setManualSos(me, true);
         });
         // «Усе гаразд» для вас (Командира): завжди під рукою, поруч із SOS
-        Button commanderOk = new Button("✅ Усе гаразд (я в нормі)");
+        Button commanderOk = new Button("✅ All good (I'm fine)");
         commanderOk.setMinWidth(Region.USE_PREF_SIZE);
         commanderOk.setStyle("-fx-background-color: #047857; -fx-text-fill: white; -fx-font-weight: bold; "
                 + "-fx-cursor: hand; -fx-padding: 10 16; -fx-background-radius: 8;");
@@ -119,19 +119,19 @@ public final class CrewMeshPanel extends VBox {
 
         HBox legend = new HBox(8,
                 HoloUi.chip("● heartbeat", HoloUi.CYAN),
-                HoloUi.chip("● SOS-пакет", HoloUi.RED),
-                HoloUi.chip("● запит / відповідь", HoloUi.PURPLE),
-                HoloUi.chip("● допомога в дорозі", HoloUi.GREEN));
+                HoloUi.chip("● SOS packet", HoloUi.RED),
+                HoloUi.chip("● request / reply", HoloUi.PURPLE),
+                HoloUi.chip("● help on the way", HoloUi.GREEN));
 
-        String how = "Як це показати:\n"
-                + "1) На картці Інженера натисніть «⚡ Збій (демо)»: пульс і HRV різко впадуть.\n"
-                + "2) З'явиться таймер. Якщо не натиснути «Усе гаразд», пристрій сам розішле крипто-пакет.\n"
-                + "3) У інших спрацюють вібрація, звук і маячок на схемі. Натисніть «Іду на допомогу»: космонавт піде до потерпілого,\n"
-                + "   допоможе йому на місці й після відбою повернеться на свій пост.\n"
-                + "4) «📡 Зв'язок» вимикає радіо вузла, а сусіди помітять тишу.";
-        VBox block = HoloUi.block("🕸️", "Mesh-мережа корабля", "Жива схема: пакети летять між пристроями",
+        String how = "How to demo this:\n"
+                + "1) On the Engineer's card press “⚡ Fault (demo)”: pulse and HRV will drop sharply.\n"
+                + "2) A timer appears. If you don't press “All good”, the device sends the crypto packet by itself.\n"
+                + "3) The others get vibration, sound and a beacon on the map. Press “On my way to help”: the astronaut walks to the victim,\n"
+                + "   helps on site and returns to their post after stand-down.\n"
+                + "4) “📡 Link” turns the node's radio off, and neighbors will notice the silence.";
+        VBox block = HoloUi.block("🕸️", "Ship mesh network", "Live map: packets fly between devices",
                 how, hint, chips, mapHolder, legend,
-                SourceLinks.row("Основа:", SpaceSources.hazard("I").source(), SpaceSources.risk("TEAM").source()),
+                SourceLinks.row("Based on:", SpaceSources.hazard("I").source(), SpaceSources.risk("TEAM").source()),
                 sosRow);
         block.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(block, Priority.ALWAYS);
@@ -139,7 +139,7 @@ public final class CrewMeshPanel extends VBox {
     }
 
     private VBox buildLogBlock() {
-        VBox block = HoloUi.block("📡", "Журнал mesh-пакетів", "Що відбувається в мережі просто зараз",
+        VBox block = HoloUi.block("📡", "Mesh packet log", "What is happening on the network right now",
                 null, logBox);
         block.setMinWidth(330);
         block.setPrefWidth(360);
@@ -154,9 +154,9 @@ public final class CrewMeshPanel extends VBox {
             cards.add(c);
             list.getChildren().add(c);
         }
-        return HoloUi.block(HoloUi.iconTeam(), "Екіпаж на зв'язку", "Пульс, стрес-баланс, вода та взаємний захист оновлюються наживо",
-                "Buddy-Guard: якщо показники критичні й член екіпажу не підтвердив «Усе гаразд» "
-                        + "за 60 секунд, його пристрій автономно розсилає аварійний пакет усім іншим.", list);
+        return HoloUi.block(HoloUi.iconTeam(), "Crew online", "Pulse, stress balance, water and mutual protection update live",
+                "Buddy-Guard: if vitals are critical and a crew member hasn't confirmed “All good” "
+                        + "within 60 seconds, their device autonomously broadcasts an alarm packet to everyone else.", list);
     }
 
     // ============ ЖУРНАЛ ============
@@ -217,15 +217,15 @@ public final class CrewMeshPanel extends VBox {
 
     private void refreshChips() {
         int online = net.onlineCount(), total = net.members().size();
-        HoloUi.styleChip(onlineChip, "📶 Вузли онлайн: " + online + "/" + total,
+        HoloUi.styleChip(onlineChip, "📶 Nodes online: " + online + "/" + total,
                 online == total ? HoloUi.GREEN : HoloUi.AMBER);
         int sos = net.activeSosCount();
-        HoloUi.styleChip(sosChip, sos > 0 ? "🚨 Активних SOS: " + sos : "● Тривог немає",
+        HoloUi.styleChip(sosChip, sos > 0 ? "🚨 Active SOS: " + sos : "● No alarms",
                 sos > 0 ? HoloUi.RED : HoloUi.GREEN);
 
         boolean mine = net.local().isSosActive();
-        commanderSos.setText(mine ? "🚨 SOS АКТИВНИЙ: натисніть, щоб вимкнути маячок"
-                : "🚨 УВІМКНУТИ КОМАНДНИЙ SOS (екстрений маяк)");
+        commanderSos.setText(mine ? "🚨 SOS ACTIVE: press to turn the beacon off"
+                : "🚨 TURN ON COMMANDER SOS (emergency beacon)");
         commanderSos.setStyle("-fx-background-color: " + (mine ? "#7F1D1D" : "#B91C1C")
                 + "; -fx-text-fill: white; -fx-font-weight: bold; -fx-cursor: hand; "
                 + "-fx-padding: 10; -fx-background-radius: 8;");

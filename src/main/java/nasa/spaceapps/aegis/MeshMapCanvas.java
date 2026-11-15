@@ -272,11 +272,11 @@ public final class MeshMapCanvas extends Canvas {
             String caption;
             if (walking[i]) {
                 double left = Math.max(0, Math.round(job[i].respondDuration * (1 - job[i].progress(now))));
-                caption = "🏃 до " + ms.get(goesTo[i]).shortName() + " · " + (int) left + " с";
+                caption = "🏃 to " + ms.get(goesTo[i]).shortName() + " · " + (int) left + " s";
             } else if (helping[i]) {
-                caption = "🤝 допомагає: " + ms.get(goesTo[i]).shortName();
+                caption = "🤝 helping: " + ms.get(goesTo[i]).shortName();
             } else {
-                caption = "↩ повертається на пост";
+                caption = "↩ returning to post";
             }
             drawNode(gc, m, cx[i], cy[i] + bob, true, caption);
 
@@ -285,9 +285,9 @@ public final class MeshMapCanvas extends Canvas {
             if (job[i] != null) {
                 double arrivedAt = job[i].respondStart + job[i].respondDuration;
                 if (now - job[i].respondStart < 2.6 && !job[i].arrived) {
-                    bubble(gc, cx[i], bubbleY, w, "✔ Запит прийнято, іду!", GREEN);
+                    bubble(gc, cx[i], bubbleY, w, "✔ Request accepted, on my way!", GREEN);
                 } else if (job[i].arrived && now - arrivedAt < 3.2) {
-                    bubble(gc, cx[i], bubbleY, w, "Я поруч, допомагаю", GREEN);
+                    bubble(gc, cx[i], bubbleY, w, "I'm here, helping", GREEN);
                 }
             }
         }
@@ -296,7 +296,7 @@ public final class MeshMapCanvas extends Canvas {
         gc.setTextAlign(TextAlignment.LEFT);
         gc.setFill(Color.web("#94A3B8"));
         gc.setFont(Font.font("Consolas", 15));
-        gc.fillText("LOCAL MESH · BLE / UWB · БЕЗ ЦЕНТРАЛЬНОГО СЕРВЕРА", mx + 14, h - my - 8);
+        gc.fillText("LOCAL MESH · BLE / UWB · NO CENTRAL SERVER", mx + 14, h - my - 8);
     }
 
     private boolean hasActiveAlert(CrewMemberState m) {
@@ -320,7 +320,7 @@ public final class MeshMapCanvas extends Canvas {
         gc.fillText(m.shortName(), x, y + 3);
         gc.setFill(Color.web("#A3B1C6"));
         gc.fillText(m.getCompartment(), x, y - NODE_R - 6);
-        gc.fillText("пішов допомагати", x, y + NODE_R + 14);
+        gc.fillText("went to help", x, y + NODE_R + 14);
         gc.setTextAlign(TextAlignment.LEFT);
     }
 
@@ -376,7 +376,7 @@ public final class MeshMapCanvas extends Canvas {
 
         // підписи
         gc.setTextAlign(TextAlignment.CENTER);
-        String name = m.shortName() + (m.isLocal() ? " (ви)" : "");
+        String name = m.shortName() + (m.isLocal() ? " (you)" : "");
         if (responder) {
             gc.setFill(Color.web("#6EE7B7"));
             gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 15));
@@ -390,7 +390,7 @@ public final class MeshMapCanvas extends Canvas {
             gc.fillText(name, x, y + NODE_R + 14);
             gc.setFill(off ? Color.web("#94A3B8") : sc);
             gc.setFont(Font.font("Consolas", FontWeight.BOLD, 16.5));
-            gc.fillText(off ? "немає сигналу" : "♥ " + Math.round(m.getHr()) + " · HRV " + Math.round(m.getHrv()), x, y + NODE_R + 27);
+            gc.fillText(off ? "no signal" : "♥ " + Math.round(m.getHr()) + " · HRV " + Math.round(m.getHrv()), x, y + NODE_R + 27);
             gc.setFill(Color.web("#A3B1C6"));
             gc.setFont(Font.font("Segoe UI", 13.5));
             gc.fillText(m.getCompartment(), x, y - NODE_R - 6);
@@ -424,7 +424,7 @@ public final class MeshMapCanvas extends Canvas {
         }
         gc.setFill(Color.web("#6EE7B7"));
         gc.setFont(Font.font("Segoe UI", FontWeight.BOLD, 15));
-        gc.fillText("🤝 допомога надається", x, y + NODE_R + 40);
+        gc.fillText("🤝 help in progress", x, y + NODE_R + 40);
         gc.setTextAlign(TextAlignment.LEFT);
     }
 

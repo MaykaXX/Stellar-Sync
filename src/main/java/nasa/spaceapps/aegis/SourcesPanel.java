@@ -29,22 +29,22 @@ public final class SourcesPanel extends VBox {
 
     // ============ БЛОКИ ============
     private VBox introBlock() {
-        Label note = text("Тут зібрано, на що спирається застосунок: п'ять небезпек польоту за класифікацією "
-                + "Програми досліджень людини NASA, конкретні ризики для здоров'я та місця, де вони видно в VITAL. "
-                + "Пояснення викладені своїми словами, повні тексти за посиланнями.", "#94A3B8", 12);
-        Label disclaimer = text("Важливо: порогові значення показників у застосунку демонстраційні, а не нормативи NASA. "
-                + "NASA та CSA не пов'язані з цим проєктом і його не схвалювали.", "#FCD34D", 11);
-        return HoloUi.block("📚", "Ризики і джерела", "Наукова основа VITAL",
-                "Кожен показник застосунку пов'язаний із реальним ризиком польоту. "
-                        + "Біля показників на екрані «Стан і дії» є значок 📎 із посиланням на джерело.",
+        Label note = text("Here is what the app is based on: the five hazards of spaceflight as classified by the "
+                + "NASA Human Research Program, specific health risks, and where they show up in VITAL. "
+                + "The explanations are in our own words; full texts are at the links.", "#94A3B8", 12);
+        Label disclaimer = text("Important: the threshold values in the app are for demonstration and are not NASA standards. "
+                + "NASA and CSA are not affiliated with this project and have not endorsed it.", "#FCD34D", 11);
+        return HoloUi.block("📚", "Risks and sources", "The scientific basis of VITAL",
+                "Every metric in the app is tied to a real spaceflight risk. "
+                        + "Next to the metrics on the “Status & Actions” screen there is a 📎 icon with a link to the source.",
                 note, disclaimer);
     }
 
     private VBox hazardsBlock() {
         FlowPane flow = new FlowPane(12, 12);
         for (SpaceSources.Hazard h : SpaceSources.HAZARDS) flow.getChildren().add(hazardCard(h));
-        return HoloUi.block("🛡️", "П'ять небезпек польоту", "Так NASA групує труднощі, з якими стикаються астронавти",
-                "Небезпеки не діють поодинці: вони підсилюють одна одну. Тому застосунок дивиться на тіло, команду й зв'язок разом.",
+        return HoloUi.block("🛡️", "Five spaceflight hazards", "How NASA groups the difficulties astronauts face",
+                "Hazards do not act alone: they amplify each other. That is why the app looks at body, team and communication together.",
                 flow);
     }
 
@@ -63,10 +63,10 @@ public final class SourcesPanel extends VBox {
             }
             all.getChildren().addAll(head, flow);
         }
-        all.getChildren().add(SourceLinks.row("Повний перелік:", SpaceSources.NASA_RISKS));
-        return HoloUi.block("🩺", "Ризики для здоров'я", "Що саме може статися і де це видно в застосунку",
-                "Групи ризиків узято зі сторінки NASA «Risks of Human Spaceflight». Позначка «у планах» "
-                        + "означає, що застосунок цей ризик поки не відстежує.",
+        all.getChildren().add(SourceLinks.row("Full list:", SpaceSources.NASA_RISKS));
+        return HoloUi.block("🩺", "Health risks", "What exactly can happen and where it shows in the app",
+                "The risk groups are taken from NASA's “Risks of Human Spaceflight” page. The “planned” label "
+                        + "means the app does not track this risk yet.",
                 all);
     }
 
@@ -78,46 +78,46 @@ public final class SourcesPanel extends VBox {
         ColumnConstraints c2 = new ColumnConstraints();
         c2.setPercentWidth(100 - pct);
         bar.getColumnConstraints().addAll(c1, c2);
-        bar.add(barSegment("Нейтрони ≈ " + pct + "%", HoloUi.ORANGE), 0, 0);
-        bar.add(barSegment("Решта випромінювання ≈ " + (100 - pct) + "%", HoloUi.CYAN), 1, 0);
+        bar.add(barSegment("Neutrons ≈ " + pct + "%", HoloUi.ORANGE), 0, 0);
+        bar.add(barSegment("Other radiation ≈ " + (100 - pct) + "%", HoloUi.CYAN), 1, 0);
 
-        Label info = text("За даними Канадського космічного агентства, нейтрони дають близько " + pct
-                + "% усієї радіації на МКС. Вони особливо шкідливі й потребують окремого захисту. "
-                + "Канада розвиває компактний автономний прилад CANS, який вимірює їх безперервно. "
-                + "Дані можуть знадобитися і на Землі: для променевої терапії та захисту екіпажів літаків.", "#94A3B8", 12);
-        Label caveat = text("Це цифри для МКС. У польоті до Марса частка може бути іншою, тому застосунок "
-                + "показує дозу однією цифрою і розбивку не моделює.", "#A3B1C6", 11);
-        return HoloUi.block("☢️", "Радіація: звідки вона береться", "Факти Канадського космічного агентства (CSA)",
-                null, bar, info, caveat, SourceLinks.row("Джерело:", SpaceSources.CSA_RADIATION));
+        Label info = text("According to the Canadian Space Agency, neutrons make up about " + pct
+                + "% of all radiation on the ISS. They are especially harmful and need separate shielding. "
+                + "Canada is developing a compact autonomous instrument, CANS, that measures them continuously. "
+                + "The data may also be useful on Earth: for radiation therapy and protecting aircrews.", "#94A3B8", 12);
+        Label caveat = text("These figures are for the ISS. On a flight to Mars the share may differ, so the app "
+                + "shows the dose as a single number and does not model the breakdown.", "#A3B1C6", 11);
+        return HoloUi.block("☢️", "Radiation: where it comes from", "Canadian Space Agency (CSA) facts",
+                null, bar, info, caveat, SourceLinks.row("Source:", SpaceSources.CSA_RADIATION));
     }
 
     private VBox studiesBlock() {
         FlowPane flow = new FlowPane(12, 12);
         for (SpaceSources.Study s : SpaceSources.STUDIES) flow.getChildren().add(studyCard(s));
-        return HoloUi.block("🔬", "Споріднені дослідження NASA", "Реальні проєкти, на які схожі наші функції",
-                "Ми не повторюємо ці дослідження, а лише показуємо, у якому напрямку працює NASA і як це перегукується із застосунком.",
-                flow, SourceLinks.row("Усі дослідження:", SpaceSources.NASA_RESEARCH));
+        return HoloUi.block("🔬", "Related NASA research", "Real projects that resemble our features",
+                "We do not repeat these studies; we only show the direction NASA is working in and how it echoes the app.",
+                flow, SourceLinks.row("All studies:", SpaceSources.NASA_RESEARCH));
     }
 
     private VBox whyBlock() {
-        Label a = text("•  На МКС одночасно триває близько " + SpaceSources.ISS_EXPERIMENTS_AT_ONCE
-                + " міжнародних експериментів.", "#CBD5E1", 12);
-        Label b = text("•  Зміни в тілі за невагомості нагадують прискорене старіння та наслідки малорухливого життя. "
-                + "Півроку спостережень у космосі дають дані, на які на Землі пішли б роки.", "#CBD5E1", 12);
-        Label c = text("•  Знання допомагають людям із проблемами рівноваги, остеопорозом, хворобами серця та судин "
-                + "і діабетом 2 типу.", "#CBD5E1", 12);
-        return HoloUi.block("🌍", "Навіщо це людям на Землі", "За матеріалами CSA", null,
-                a, b, c, SourceLinks.row("Джерело:", SpaceSources.CSA_WHY_SCIENCE));
+        Label a = text("•  About " + SpaceSources.ISS_EXPERIMENTS_AT_ONCE
+                + " international experiments run on the ISS at the same time.", "#CBD5E1", 12);
+        Label b = text("•  Changes in the body in weightlessness resemble accelerated aging and the effects of a sedentary life. "
+                + "Six months of observation in space give data that would take years on Earth.", "#CBD5E1", 12);
+        Label c = text("•  The knowledge helps people with balance problems, osteoporosis, heart and vascular disease "
+                + "and type 2 diabetes.", "#CBD5E1", 12);
+        return HoloUi.block("🌍", "Why this matters to people on Earth", "Based on CSA materials", null,
+                a, b, c, SourceLinks.row("Source:", SpaceSources.CSA_WHY_SCIENCE));
     }
 
     private VBox sourcesBlock() {
         String[] descs = {
-                "п'ять небезпек і пояснення до кожної",
-                "перелік ризиків для здоров'я",
-                "що NASA вивчає зараз",
-                "карта ризиків і прогалин у знаннях",
-                "нейтрони та прилад CANS",
-                "чому космічна наука корисна на Землі"};
+                "five hazards and an explanation of each",
+                "list of health risks",
+                "what NASA is studying now",
+                "map of risks and knowledge gaps",
+                "neutrons and the CANS instrument",
+                "why space science is useful on Earth"};
         VBox list = new VBox(6);
         List<SpaceSources.Link> links = SpaceSources.mainSources();
         for (int i = 0; i < links.size(); i++) {
@@ -127,9 +127,9 @@ public final class SourcesPanel extends VBox {
             row.setAlignment(Pos.CENTER_LEFT);
             list.getChildren().add(row);
         }
-        Label foot = text("Сторінки окремих ризиків і досліджень відкриваються з посилань вище та з карток цього екрана.",
+        Label foot = text("Pages for individual risks and studies open from the links above and from the cards on this screen.",
                 "#A3B1C6", 11);
-        return HoloUi.block("🔗", "Усі джерела", "Основні сторінки, звідки взято матеріал", null, list, foot);
+        return HoloUi.block("🔗", "All sources", "Main pages the material comes from", null, list, foot);
     }
 
     // ============ КАРТКИ ============
@@ -148,7 +148,7 @@ public final class SourcesPanel extends VBox {
         HBox.setHgrow(name, Priority.ALWAYS);
 
         VBox card = new VBox(8, top, text(h.meaning(), "#94A3B8", 11),
-                text("В застосунку: " + h.inApp(), "#7DD3FC", 11),
+                text("In the app: " + h.inApp(), "#7DD3FC", 11),
                 SourceLinks.link(h.source().title() + " ↗", h.source().url()));
         return styled(card, 350);
     }
@@ -159,7 +159,7 @@ public final class SourcesPanel extends VBox {
         HBox.setHgrow(title, Priority.ALWAYS);
 
         HBox head = new HBox(8, title,
-                r.implemented() ? HoloUi.chip("● у застосунку", HoloUi.GREEN) : HoloUi.chip("○ у планах", HoloUi.AMBER));
+                r.implemented() ? HoloUi.chip("● in the app", HoloUi.GREEN) : HoloUi.chip("○ planned", HoloUi.AMBER));
         head.setAlignment(Pos.CENTER_LEFT);
 
         VBox card = new VBox(8, head, text(r.summary(), "#94A3B8", 11));
@@ -176,7 +176,7 @@ public final class SourcesPanel extends VBox {
             }
             card.getChildren().add(chips);
         }
-        card.getChildren().addAll(text("В застосунку: " + r.inApp(), "#7DD3FC", 11),
+        card.getChildren().addAll(text("In the app: " + r.inApp(), "#7DD3FC", 11),
                 SourceLinks.link(r.source().title() + " ↗", r.source().url()));
         return styled(card, 440);
     }
@@ -185,7 +185,7 @@ public final class SourcesPanel extends VBox {
         Label name = text(s.name(), "#F1F5F9", 13);
         name.setStyle(name.getStyle() + " -fx-font-weight: bold;");
         VBox card = new VBox(8, name, text(s.what(), "#94A3B8", 11),
-                text("Схоже на наше: " + s.relation(), "#7DD3FC", 11),
+                text("Similar to ours: " + s.relation(), "#7DD3FC", 11),
                 SourceLinks.link(s.source().title() + " ↗", s.source().url()));
         return styled(card, 350);
     }

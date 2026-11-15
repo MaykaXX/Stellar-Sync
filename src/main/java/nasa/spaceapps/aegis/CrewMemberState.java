@@ -14,10 +14,10 @@ import java.util.Random;
 public class CrewMemberState {
 
     public enum CrewStatus {
-        NOMINAL("Усе гаразд", "#10B981"),
-        WARNING("Потрібна увага", "#F59E0B"),
-        CRITICAL("Критично", "#EF4444"),
-        OFFLINE("Немає сигналу", "#94A3B8");
+        NOMINAL("All good", "#10B981"),
+        WARNING("Needs attention", "#F59E0B"),
+        CRITICAL("Critical", "#EF4444"),
+        OFFLINE("No signal", "#94A3B8");
 
         public final String label;
         public final String hex;
@@ -188,16 +188,16 @@ public class CrewMemberState {
 
     private String describe(boolean sudden) {
         StringBuilder sb = new StringBuilder();
-        if (hr > 125 || hr < 45) sb.append("пульс ").append((int) Math.round(hr)).append(" уд/хв");
+        if (hr > 125 || hr < 45) sb.append("pulse ").append((int) Math.round(hr)).append(" bpm");
         if (hrv < 25 || sudden) {
             if (sb.length() > 0) sb.append(", ");
-            sb.append("HRV ").append((int) Math.round(hrv)).append(" мс");
+            sb.append("HRV ").append((int) Math.round(hrv)).append(" ms");
         }
         if (hydration < 70) {
             if (sb.length() > 0) sb.append(", ");
-            sb.append("гідратація ").append((int) Math.round(hydration)).append("%");
+            sb.append("hydration ").append((int) Math.round(hydration)).append("%");
         }
-        return sb.length() == 0 ? "показники поза нормою" : sb.toString();
+        return sb.length() == 0 ? "vitals out of range" : sb.toString();
     }
 
     private static double clamp(double v, double lo, double hi) {
